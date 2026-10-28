@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+  <meta charset="utf-8">
+  <title>Stream Saver</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <img src="../icons/icon.svg" alt="" width="20" height="20">
+    <h1>Stream Saver</h1>
+  </header>
+
+  <section id="status" class="status">Iščem posnetek …</section>
+
+  <section id="common" hidden>
+    <label for="filename">Ime datoteke</label>
+    <input id="filename" type="text" spellcheck="false">
+
+    <label for="subfolder">Podmapa (predmet) v mapi za prenose</label>
+    <input id="subfolder" type="text" spellcheck="false" placeholder="npr. Razvojna psihologija">
+
+    <label class="check"><input id="saveAs" type="checkbox"> Vprašaj, kam naj shranim (»Shrani kot«)</label>
+  </section>
+
+  <section id="form" hidden>
+    <div class="row">
+      <div>
+        <label for="mode">Vsebina</label>
+        <select id="mode">
+          <option value="av">Video + zvok (MP4)</option>
+          <option value="audio">Samo zvok (M4A)</option>
+          <option value="video">Samo video (MP4)</option>
+        </select>
+      </div>
+      <div>
+        <label for="concurrency">Vzporedni prenosi</label>
+        <select id="concurrency">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="4" selected>4</option>
+          <option value="6">6</option>
+          <option value="8">8</option>
+        </select>
+      </div>
+    </div>
+
+    <button id="start" class="primary">Prenesi posnetek</button>
+  </section>
+
+  <section id="transcript" hidden>
+    <h2>Prepis</h2>
+    <div id="trStatus" class="status small">Iščem prepis …</div>
+    <div class="row">
+      <div>
+        <label for="trFormat">Oblika prepisa</label>
+        <select id="trFormat">
+          <option value="txt" selected>Besedilo (.txt)</option>
+          <option value="vtt">Podnapisi (.vtt)</option>
+        </select>
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <button id="trSave">Shrani prepis</button>
+      </div>
+    </div>
+    <div id="trMsg" class="small muted"></div>
+  </section>
+
+  <section id="progress" hidden>
+    <div class="bar"><div id="barFill"></div></div>
+    <div id="progressText" class="small"></div>
+    <div id="progressMsg" class="small muted"></div>
+    <button id="cancel">Prekliči</button>
+    <button id="again" hidden>Nov prenos</button>
+  </section>
+
+  <details id="fallback" hidden>
+    <summary>Rezervna možnost: ukaz za yt-dlp / ffmpeg</summary>
+    <p class="small muted">Če prenos v brskalniku ne uspe, kopiraj ukaz in ga zaženi v ukazni vrstici (PowerShell/CMD). Ukazi vsebujejo začasne žetone – ne deli jih z drugimi.</p>
+    <div class="buttons">
+      <button id="copyYtdlp">Kopiraj ukaz yt-dlp</button>
+      <button id="copyFfmpeg">Kopiraj ukaz ffmpeg</button>
+      <button id="copyManifest">Kopiraj URL manifesta</button>
+    </div>
+    <textarea id="cmd" readonly rows="4"></textarea>
+  </details>
+
+  <footer class="small muted" id="note"></footer>
+  <script src="../lib/mpd.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

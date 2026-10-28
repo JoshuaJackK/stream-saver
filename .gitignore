@@ -1,0 +1,10 @@
+node_modules/
+dist/
+web-ext-artifacts/
+*.xpi
+*.zip
+.env
+.amo-upload-uuid
+.DS_Store
+# osebni zapiski o predaji (niso del javnega repozitorija)
+PREDAJA.md

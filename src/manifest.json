@@ -1,0 +1,80 @@
+{
+  "manifest_version": 2,
+  "name": "Stream Saver (posnetki predavanj)",
+  "short_name": "Stream Saver",
+  "version": "1.1.0",
+  "description": "Shrani posnetke Microsoft Stream (SharePoint/OneDrive, tudi v Teams) za osebno uporabo brez povezave: video + zvok v en MP4, ločeno pa tudi prepis (.txt/.vtt).",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "96": "icons/icon-96.png",
+    "128": "icons/icon-128.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "stream-saver@kajzer.personal",
+      "strict_min_version": "140.0",
+      "update_url": "https://raw.githubusercontent.com/JoshuaJackK/stream-saver/main/updates.json",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
+    },
+    "gecko_android": {
+      "strict_min_version": "142.0"
+    }
+  },
+  "permissions": [
+    "webRequest",
+    "downloads",
+    "storage",
+    "unlimitedStorage",
+    "clipboardWrite",
+    "*://*.sharepoint.com/*",
+    "*://*.sharepoint.com.mcas.ms/*",
+    "*://*.svc.ms/*",
+    "*://*.svc.ms.mcas.ms/*",
+    "*://*.teams.microsoft.com/*",
+    "*://*.teams.microsoft.com.mcas.ms/*",
+    "*://*.cloud.microsoft/*"
+  ],
+  "background": {
+    "scripts": [
+      "lib/mpd.js",
+      "lib/mp4.js",
+      "lib/engine.js",
+      "lib/sink.js",
+      "lib/transcript.js",
+      "background.js"
+    ],
+    "persistent": true
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.sharepoint.com/*",
+        "*://*.sharepoint.com.mcas.ms/*",
+        "*://*.teams.microsoft.com/*",
+        "*://*.teams.microsoft.com.mcas.ms/*",
+        "*://*.cloud.microsoft/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true,
+      "match_about_blank": true
+    }
+  ],
+  "browser_action": {
+    "default_title": "Stream Saver – prenesi posnetek",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    },
+    "default_area": "navbar"
+  }
+}

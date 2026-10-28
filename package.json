@@ -1,0 +1,20 @@
+{
+  "name": "stream-saver",
+  "version": "1.1.0",
+  "description": "Firefox razširitev za shranjevanje posnetkov Microsoft Stream (SharePoint/OneDrive/Teams) za osebno uporabo.",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "node --test test/",
+    "lint": "web-ext lint -s src --self-hosted",
+    "build": "web-ext build -s src -a dist --overwrite-dest -n stream-saver-{version}.xpi"
+  },
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@xmldom/xmldom": "^0.9.12"
+  },
+  "private": true
+}

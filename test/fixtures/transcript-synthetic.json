@@ -1,0 +1,114 @@
+﻿{
+ "$schema": "https://example.invalid/fake-transcript-schema.json",
+ "version": "1.0.0",
+ "type": "Transcript",
+ "entries": [
+  {
+   "id": "aaaaaaaa-0000-4000-8000-000000000001/1",
+   "speechServiceResultId": "fake-result-1",
+   "text": "Dobrodošli na izmišljenem predavanju o čebelah.",
+   "rawText": null,
+   "speakerId": "11111111-aaaa-4aaa-8aaa-111111111111@fake-tenant",
+   "speakerDisplayName": "Ana Novak",
+   "confidence": 0.9,
+   "startOffset": "00:00:07.1170000",
+   "endOffset": "00:00:13.9300000",
+   "hasBeenEdited": false,
+   "roomId": null,
+   "spokenLanguageTag": "sl-si"
+  },
+  {
+   "id": "aaaaaaaa-0000-4000-8000-000000000001/2",
+   "speechServiceResultId": "fake-result-2",
+   "text": "Čebele <letijo> & žvrgolijo – šumniki: č, š, ž.",
+   "rawText": null,
+   "speakerId": "11111111-aaaa-4aaa-8aaa-111111111111@fake-tenant",
+   "speakerDisplayName": "Ana Novak",
+   "confidence": 0.9,
+   "startOffset": "00:00:13.9300000",
+   "endOffset": "00:00:20.0000000",
+   "hasBeenEdited": false,
+   "roomId": null,
+   "spokenLanguageTag": "sl-si"
+  },
+  {
+   "id": "aaaaaaaa-0000-4000-8000-000000000001/3",
+   "speechServiceResultId": "fake-result-3",
+   "text": "Vprašanje iz dvorane: ali 3 > 2?",
+   "rawText": null,
+   "speakerId": "8:live:.cid.fake0000000000",
+   "speakerDisplayName": "Gost Ena & Drugi",
+   "confidence": 0.9,
+   "startOffset": "00:01:05.5005000",
+   "endOffset": "00:01:09.0000000",
+   "hasBeenEdited": false,
+   "roomId": null,
+   "spokenLanguageTag": "sl-si"
+  },
+  {
+   "id": "aaaaaaaa-0000-4000-8000-000000000001/4",
+   "speechServiceResultId": "fake-result-4",
+   "text": "Odgovor brez imena govorca.",
+   "rawText": null,
+   "speakerId": "22222222-bbbb-4bbb-8bbb-222222222222@fake-tenant",
+   "speakerDisplayName": "",
+   "confidence": 0.9,
+   "startOffset": "00:02:00.0000000",
+   "endOffset": "00:02:03.9999999",
+   "hasBeenEdited": false,
+   "roomId": null,
+   "spokenLanguageTag": "sl-si"
+  },
+  {
+   "id": "aaaaaaaa-0000-4000-8000-000000000001/5",
+   "speechServiceResultId": "fake-result-5",
+   "text": "   ",
+   "rawText": null,
+   "speakerId": "22222222-bbbb-4bbb-8bbb-222222222222@fake-tenant",
+   "speakerDisplayName": "Boris Kranjc",
+   "confidence": 0.9,
+   "startOffset": "00:02:10.0000000",
+   "endOffset": "00:02:11.0000000",
+   "hasBeenEdited": false,
+   "roomId": null,
+   "spokenLanguageTag": "sl-si"
+  },
+  {
+   "id": "aaaaaaaa-0000-4000-8000-000000000001/6",
+   "speechServiceResultId": "fake-result-6",
+   "text": "Zadnja misel po skoraj štirih urah.",
+   "rawText": null,
+   "speakerId": "22222222-bbbb-4bbb-8bbb-222222222222@fake-tenant",
+   "speakerDisplayName": "Boris Kranjc",
+   "confidence": 0.9,
+   "startOffset": "03:55:03.1234567",
+   "endOffset": "03:55:09.9999999",
+   "hasBeenEdited": false,
+   "roomId": null,
+   "spokenLanguageTag": "sl-si"
+  },
+  {
+   "id": "aaaaaaaa-0000-4000-8000-000000000001/7",
+   "speechServiceResultId": "fake-result-7",
+   "text": "Konec.",
+   "rawText": null,
+   "speakerId": "11111111-aaaa-4aaa-8aaa-111111111111@fake-tenant",
+   "speakerDisplayName": "Ana Novak",
+   "confidence": 0.9,
+   "startOffset": "03:55:10.0000000",
+   "endOffset": "03:55:11.0000000",
+   "hasBeenEdited": false,
+   "roomId": null,
+   "spokenLanguageTag": "en-us"
+  }
+ ],
+ "events": [
+  {
+   "id": "fake-event-1",
+   "eventType": "SessionHandover",
+   "userId": "11111111-aaaa-4aaa-8aaa-111111111111@fake-tenant",
+   "userDisplayName": "",
+   "startOffset": "00:00:00.0000000"
+  }
+ ]
+}

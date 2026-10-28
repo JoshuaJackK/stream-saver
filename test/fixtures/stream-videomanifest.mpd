@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Constructed sample modelled on a Microsoft Stream (SharePoint) videomanifest response, format=dash.
+     3 h 12 min 5.4 s lecture, 2 s segments (timescale 10 MHz = 100 ns ticks), video in 3 qualities + 1 audio. -->
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" profiles="urn:mpeg:dash:profile:isoff-live:2011" type="static" mediaPresentationDuration="PT3H12M5.4S" minBufferTime="PT4S">
+  <Period id="0" start="PT0S">
+    <BaseURL>https://example-my.sharepoint.com/_api_cached/v2.1/drives/b!AbCdEf0123456789-XyZ/items/01ABCDEFGHIJKLMNOPQRSTUVWXYZ/</BaseURL>
+    <AdaptationSet id="1" contentType="video" mimeType="video/mp4" segmentAlignment="true" startWithSAP="1" maxWidth="1920" maxHeight="1080">
+      <SegmentTemplate timescale="10000000" presentationTimeOffset="0"
+        initialization="oneDrive.transcode?version=Published&amp;P1=1760000000&amp;P2=1&amp;P3=1&amp;P4=AbC%2bdEf%3d&amp;cTag=%22c%3A%7B1234%7D%2C2%22&amp;format=fmp4&amp;InputFormat=mp4&amp;enableEncryption=1&amp;kid=kid-1&amp;part=initsegment&amp;track=video&amp;quality=$RepresentationID$"
+        media="oneDrive.transcode?version=Published&amp;P1=1760000000&amp;P2=1&amp;P3=1&amp;P4=AbC%2bdEf%3d&amp;cTag=%22c%3A%7B1234%7D%2C2%22&amp;format=fmp4&amp;InputFormat=mp4&amp;enableEncryption=1&amp;kid=kid-1&amp;part=mediasegment&amp;track=video&amp;quality=$RepresentationID$&amp;segmentTime=$Time$">
+        <SegmentTimeline>
+          <S t="0" d="20000000" r="5759"/>
+          <S d="54000000"/>
+        </SegmentTimeline>
+      </SegmentTemplate>
+      <Representation id="vhigh" bandwidth="1800000" codecs="avc1.640028" width="1920" height="1080" frameRate="30"/>
+      <Representation id="vmed" bandwidth="900000" codecs="avc1.64001F" width="1280" height="720" frameRate="30"/>
+      <Representation id="vlow" bandwidth="350000" codecs="avc1.4D401E" width="640" height="360" frameRate="30"/>
+    </AdaptationSet>
+    <AdaptationSet id="2" contentType="audio" mimeType="audio/mp4" lang="sl" segmentAlignment="true">
+      <SegmentTemplate timescale="10000000"
+        initialization="oneDrive.transcode?version=Published&amp;P1=1760000000&amp;P2=1&amp;P3=1&amp;P4=AbC%2bdEf%3d&amp;format=fmp4&amp;InputFormat=mp4&amp;enableEncryption=1&amp;kid=kid-1&amp;part=initsegment&amp;track=audio&amp;quality=$RepresentationID$"
+        media="oneDrive.transcode?version=Published&amp;P1=1760000000&amp;P2=1&amp;P3=1&amp;P4=AbC%2bdEf%3d&amp;format=fmp4&amp;InputFormat=mp4&amp;enableEncryption=1&amp;kid=kid-1&amp;part=mediasegment&amp;track=audio&amp;quality=$RepresentationID$&amp;segmentTime=$Time$">
+        <SegmentTimeline>
+          <S t="0" d="20000000" r="5759"/>
+          <S d="54000000"/>
+        </SegmentTimeline>
+      </SegmentTemplate>
+      <Representation id="audcopy" bandwidth="128000" codecs="mp4a.40.2" audioSamplingRate="48000">
+        <AudioChannelConfiguration schemeIdUri="urn:mpeg:dash:23003:3:audio_channel_configuration:2011" value="2"/>
+      </Representation>
+    </AdaptationSet>
+    <AdaptationSet id="3" contentType="text" mimeType="text/vtt" lang="sl">
+      <Representation id="captions" bandwidth="1000"><BaseURL>captions.vtt</BaseURL></Representation>
+    </AdaptationSet>
+  </Period>
+</MPD>

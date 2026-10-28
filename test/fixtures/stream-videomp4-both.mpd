@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Real-world Stream quirk regression: BOTH AdaptationSets use mimeType="video/mp4"
+     (ISO-BMFF). Audio is only distinguishable via codecs=mp4a + audioSamplingRate +
+     track=audio in the oneDrive.transcode URL template. No contentType attribute. -->
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static" mediaPresentationDuration="PT21S" minBufferTime="PT2S" profiles="urn:mpeg:dash:profile:isoff-live:2011">
+  <Period id="0">
+    <BaseURL>https://example-my.sharepoint.com/_api_cached/v2.1/drives/b!drv/items/01ITEM/</BaseURL>
+    <AdaptationSet id="1" mimeType="video/mp4" segmentAlignment="true" maxWidth="1280" maxHeight="720">
+      <SegmentTemplate timescale="10000000"
+        initialization="oneDrive.transcode?version=Published&amp;P1=1&amp;P2=2&amp;P3=3&amp;P4=x&amp;format=fmp4&amp;part=initsegment&amp;track=video&amp;quality=$RepresentationID$"
+        media="oneDrive.transcode?version=Published&amp;P1=1&amp;P2=2&amp;P3=3&amp;P4=x&amp;format=fmp4&amp;part=mediasegment&amp;track=video&amp;quality=$RepresentationID$&amp;segmentTime=$Time$">
+        <SegmentTimeline>
+          <S t="0" d="20000000" r="9"/>
+          <S d="10000000"/>
+        </SegmentTimeline>
+      </SegmentTemplate>
+      <Representation id="vhigh" bandwidth="1200000" codecs="avc1.64001F" width="1280" height="720"/>
+      <Representation id="vlow" bandwidth="400000" codecs="avc1.42C01E" width="640" height="360"/>
+    </AdaptationSet>
+    <AdaptationSet id="2" mimeType="video/mp4" lang="sl" segmentAlignment="true">
+      <SegmentTemplate timescale="10000000"
+        initialization="oneDrive.transcode?version=Published&amp;P1=1&amp;P2=2&amp;P3=3&amp;P4=x&amp;format=fmp4&amp;part=initsegment&amp;track=audio&amp;quality=$RepresentationID$"
+        media="oneDrive.transcode?version=Published&amp;P1=1&amp;P2=2&amp;P3=3&amp;P4=x&amp;format=fmp4&amp;part=mediasegment&amp;track=audio&amp;quality=$RepresentationID$&amp;segmentTime=$Time$">
+        <SegmentTimeline>
+          <S t="0" d="20000000" r="9"/>
+          <S d="10000000"/>
+        </SegmentTimeline>
+      </SegmentTemplate>
+      <Representation id="audcopy" bandwidth="128000" codecs="mp4a.40.2" audioSamplingRate="48000">
+        <AudioChannelConfiguration schemeIdUri="urn:mpeg:dash:23003:3:audio_channel_configuration:2011" value="2"/>
+      </Representation>
+    </AdaptationSet>
+  </Period>
+</MPD>
