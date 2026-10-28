@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "name": "Stream Saver (posnetki predavanj)",
   "short_name": "Stream Saver",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "Shrani posnetke Microsoft Stream (SharePoint/OneDrive, Teams) in – po neobveznem vklopu – video tokove (HLS, DASH, MP4) na drugih straneh za osebno uporabo brez povezave. Posnetkov z DRM ne prenaša.",
   "icons": {
     "16": "icons/icon-16.png",
