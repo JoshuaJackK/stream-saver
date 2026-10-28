@@ -7,7 +7,7 @@ Razširitev je podpisana na AMO kot **unlisted** (ni javno na addons.mozilla.org
 - `gecko.update_url` = `https://raw.githubusercontent.com/JoshuaJackK/stream-saver/main/updates.json`
 - Firefox ta JSON občasno (privzeto ~na 24 h) prebere; če najde višjo `version`, prenese `.xpi` iz `update_link` (GitHub Release) in preveri `update_hash` (sha256).
 - Repozitorij mora ostati **javen**, sicer Firefox posodobitve ne more prebrati.
-- Če se dovoljenja (`permissions`) med različicami ne spremenijo, Firefox pri posodobitvi ne vpraša za potrditev.
+- Če se **obvezna** dovoljenja (`permissions`, `content_scripts.matches`) med različicami ne spremenijo, Firefox pri posodobitvi ne vpraša za potrditev; nova obvezna dovoljenja bi posodobitev pustila v čakanju, dokler uporabnik ne potrdi. Zato je `<all_urls>` od 1.2.0 v `optional_permissions` (zahteva se s klikom v oknu razširitve), vsebinska skripta za splošne strani pa se registrira dinamično (`contentScripts.register`).
 
 ## Prva ročna namestitev (enkrat)
 Firefox se samodejno posodablja samo pri razširitvah, ki že vsebujejo `update_url`. Različice **1.0.x in 1.1.0 ga nimajo**,

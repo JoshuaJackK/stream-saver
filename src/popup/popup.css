@@ -21,3 +21,7 @@ footer { margin-top: 10px; }
 h2 { font-size: 13px; margin: 14px 0 6px; padding-top: 10px; border-top: 1px solid #ccc; }
 #trSave { width: 100%; margin-top: 0; }
 #trMsg { margin-top: 6px; min-height: 1em; }
+.empty .row, .empty #genStart, .empty #genCopyFfmpeg, .empty #genCopyYtdlp { display: none; }
+.stream { display: block; padding: 6px 4px; border-bottom: 1px solid #ddd; cursor: pointer; font-weight: normal; margin: 0; }
+.stream input { margin-right: 6px; } .stream .tag { display: inline-block; min-width: 38px; font-weight: 700; }
+.stream .fl { display: block; margin-left: 20px; font-size: 12px; color: #a15c00; } .stream .bad { color: #b3261e; }

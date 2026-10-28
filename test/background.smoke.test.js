@@ -30,7 +30,8 @@ test('background orchestration', { skip: !hasFfmpeg && 'ffmpeg not installed' },
     tabs: { onRemoved: ev('rm'), onUpdated: ev('up'), get: async (id) => ({ id, title: 'Primer predmeta – 3. predavanje.mp4 - Microsoft Stream', url: 'https://example-my.sharepoint.com/personal/u/_layouts/15/stream.aspx?id=a' }), sendMessage: async () => null },
     browserAction: { setBadgeText: async (o) => { badges.text = o.text; }, setBadgeBackgroundColor: async () => {}, setTitle: async () => {} },
     downloads: { download: async (o) => { downloads.push(o); return 1; }, onChanged: ev('dl') },
-    runtime: { onMessage: ev('msg') }
+    runtime: { onMessage: ev('msg') },
+    permissions: { contains: async () => false, onAdded: { addListener() {} }, onRemoved: { addListener() {} } }
   };
   let sinkBytes = 0;
   const ctx = {
@@ -46,8 +47,9 @@ test('background orchestration', { skip: !hasFfmpeg && 'ffmpeg not installed' },
   ctx.globalThis = ctx;
   ctx.URL = class extends URL {}; ctx.URL.createObjectURL = () => 'blob:moz-extension://x/1'; ctx.URL.revokeObjectURL = () => {};
   vm.createContext(ctx);
-  for (const f of ['lib/mpd.js', 'lib/mp4.js', 'lib/engine.js', 'lib/transcript.js']) vm.runInContext(fs.readFileSync(path.join(SRC, f), 'utf8'), ctx, { filename: f });
+  for (const f of ['lib/mpd.js', 'lib/mp4.js', 'lib/ts.js', 'lib/engine.js', 'lib/hls.js', 'lib/hlsdl.js', 'lib/detect.js', 'lib/transcript.js']) vm.runInContext(fs.readFileSync(path.join(SRC, f), 'utf8'), ctx, { filename: f });
   ctx.SSSink = { purgeAll: async () => {}, createSink: async () => ({ kind: 'test', write: async (u8) => { sinkBytes += u8.byteLength; }, close: async () => {}, abort: async () => {}, getBlob: async () => new Blob([]), cleanup: async () => {} }) };
+  vm.runInContext(fs.readFileSync(path.join(SRC, 'background-generic.js'), 'utf8'), ctx, { filename: 'background-generic.js' });
   vm.runInContext(fs.readFileSync(path.join(SRC, 'background.js'), 'utf8'), ctx, { filename: 'background.js' });
 
   // player inside a Teams iframe requests the manifest (tab 7, frame 3)

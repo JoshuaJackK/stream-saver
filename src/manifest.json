@@ -3,7 +3,7 @@
   "name": "Stream Saver (posnetki predavanj)",
   "short_name": "Stream Saver",
   "version": "1.1.2",
-  "description": "Shrani posnetke Microsoft Stream (SharePoint/OneDrive, tudi v Teams) za osebno uporabo brez povezave: video + zvok v en MP4, ločeno pa tudi prepis (.txt/.vtt).",
+  "description": "Shrani posnetke Microsoft Stream (SharePoint/OneDrive, Teams) in – po neobveznem vklopu – video tokove (HLS, DASH, MP4) na drugih straneh za osebno uporabo brez povezave. Posnetkov z DRM ne prenaša.",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
@@ -40,13 +40,21 @@
     "*://*.teams.microsoft.com.mcas.ms/*",
     "*://*.cloud.microsoft/*"
   ],
+  "optional_permissions": [
+    "<all_urls>"
+  ],
   "background": {
     "scripts": [
       "lib/mpd.js",
       "lib/mp4.js",
+      "lib/ts.js",
       "lib/engine.js",
+      "lib/hls.js",
+      "lib/hlsdl.js",
+      "lib/detect.js",
       "lib/sink.js",
       "lib/transcript.js",
+      "background-generic.js",
       "background.js"
     ],
     "persistent": true

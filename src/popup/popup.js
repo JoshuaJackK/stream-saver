@@ -1,8 +1,8 @@
 /* Stream Saver – pojavno okno (UI v slovenščini). */
-/* global SSMpd */
+/* global SSMpd, PopupGen */
 'use strict';
 const $ = (id) => document.getElementById(id);
-let tabId = null, state = null, filled = false, trSaving = false;
+let tabId = null, state = null, gstate = null, filled = false, trSaving = false;
 
 function fmtMB(b) { return b >= 1073741824 ? (b / 1073741824).toFixed(2) + ' GB' : (b / 1048576).toFixed(0) + ' MB'; }
 function fmtTime(s) { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return (h ? h + ' h ' : '') + m + ' min ' + (h ? '' : x + ' s'); }
@@ -38,6 +38,8 @@ function render() {
   const job = s.job;
   const tr = s.transcript || { state: 'none', level: 'warn', text: '' };
   const trUsable = tr.state === 'ready' || tr.state === 'loading' || tr.state === 'error';
+  PopupGen.hide();
+  if (!s.detected && !(job && job.status) && PopupGen.render(trUsable)) { $('fallback').hidden = true; $('transcript').hidden = true; return; }
   $('fallback').hidden = !s.detected;
   if ((s.detected || trUsable) && !filled) { $('filename').value = s.title || 'posnetek'; filled = true; }
   renderTranscript(tr, trUsable);
@@ -85,7 +87,12 @@ function render() {
 }
 
 async function refresh() {
-  try { state = await browser.runtime.sendMessage({ type: 'ss-state', tabId }); render(); }
+  try {
+    state = await browser.runtime.sendMessage({ type: 'ss-state', tabId });
+    gstate = await browser.runtime.sendMessage({ type: 'ss-g-state', tabId }).catch(() => null);
+    PopupGen.set(gstate);
+    render();
+  }
   catch (e) { setStatus('Napaka pri komunikaciji z razširitvijo: ' + e.message, 'err'); }
 }
 
@@ -100,6 +107,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   tabId = tab ? tab.id : null;
   await loadSettings();
+  PopupGen.init({ setStatus, fmtMB, fmtTime, refresh, showMain, saveSettings }, tabId);
   ['subfolder', 'concurrency', 'saveAs', 'mode', 'trFormat'].forEach((id) => $(id).addEventListener('change', saveSettings));
   $('start').addEventListener('click', async () => {
     await saveSettings();
@@ -130,8 +138,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     trSaving = false;
     refresh();
   });
-  $('cancel').addEventListener('click', () => browser.runtime.sendMessage({ type: 'ss-cancel', tabId }).then(refresh));
-  $('again').addEventListener('click', () => browser.runtime.sendMessage({ type: 'ss-reset', tabId }).then(refresh));
+  $('cancel').addEventListener('click', () => browser.runtime.sendMessage({ type: PopupGen.jobActive() ? 'ss-g-cancel' : 'ss-cancel', tabId }).then(refresh));
+  $('again').addEventListener('click', () => browser.runtime.sendMessage({ type: PopupGen.jobActive() ? 'ss-g-reset' : 'ss-reset', tabId }).then(refresh));
   $('copyYtdlp').addEventListener('click', () => copy(state && state.commands && state.commands.ytdlp, 'Ukaz yt-dlp'));
   $('copyFfmpeg').addEventListener('click', () => copy(state && state.commands && state.commands.ffmpeg, 'Ukaz ffmpeg'));
   $('copyManifest').addEventListener('click', () => copy(state && state.commands && state.commands.manifest, 'URL manifesta'));

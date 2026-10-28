@@ -13,6 +13,21 @@
 
   <section id="status" class="status">Iščem posnetek …</section>
 
+  <section id="genPerm" hidden>
+    <p class="small">Stream Saver lahko zazna videe (HLS, DASH, navadne datoteke) tudi na drugih straneh. Za to potrebuje dovoljenje za branje glav omrežnih zahtev na vseh straneh. Dovoljenje je neobvezno, vklopiš ga s klikom spodaj, Firefox te bo vprašal za potrditev.</p>
+    <button id="genEnable" class="primary">Vklopi zaznavanje na vseh straneh</button>
+    <p class="small muted">Po potrditvi osveži stran z videom (F5) in ga predvajaj nekaj sekund. Samo za osebno uporabo; za spoštovanje pogojev spletnega mesta in avtorskih pravic si odgovoren sam. Posnetkov z DRM ne prenaša.</p>
+  </section>
+
+  <section id="genList" hidden>
+    <label>Zaznani tokovi na tej strani</label>
+    <div id="genStreams"></div>
+    <div id="genQualityRow" hidden>
+      <label for="genQuality">Kakovost</label>
+      <select id="genQuality"></select>
+    </div>
+  </section>
+
   <section id="common" hidden>
     <label for="filename">Ime datoteke</label>
     <input id="filename" type="text" spellcheck="false">
@@ -46,6 +61,32 @@
     </div>
 
     <button id="start" class="primary">Prenesi posnetek</button>
+  </section>
+
+  <section id="genForm" hidden>
+    <div class="row">
+      <div>
+        <label for="genMode">Vsebina</label>
+        <select id="genMode">
+          <option value="av">Video + zvok</option>
+          <option value="audio">Samo zvok</option>
+        </select>
+      </div>
+      <div>
+        <label for="genConc">Vzporedni prenosi</label>
+        <select id="genConc">
+          <option value="1">1</option><option value="2">2</option><option value="4" selected>4</option><option value="6">6</option><option value="8">8</option>
+        </select>
+      </div>
+    </div>
+    <button id="genStart" class="primary">Prenesi izbrani tok</button>
+    <textarea id="genCmd" readonly rows="3" hidden></textarea>
+    <div class="buttons">
+      <button id="genShowBtn" hidden>Ponovno pokaži plavajoči gumb na tej strani</button>
+      <button id="genCopyFfmpeg">Kopiraj ukaz ffmpeg</button>
+      <button id="genCopyYtdlp">Kopiraj ukaz yt-dlp</button>
+      <button id="genDisable">Izklopi zaznavanje na vseh straneh</button>
+    </div>
   </section>
 
   <section id="transcript" hidden>
@@ -88,6 +129,7 @@
 
   <footer class="small muted" id="note"></footer>
   <script src="../lib/mpd.js"></script>
+  <script src="popup-generic.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

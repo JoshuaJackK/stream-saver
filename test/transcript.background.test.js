@@ -27,7 +27,8 @@ function setup(fetchImpl, frameFetchImpl) {
     },
     browserAction: { setBadgeText: async (o) => { badges.text = o.text; badges.title = badges.title; }, setBadgeBackgroundColor: async () => {}, setTitle: async (o) => { badges.title = o.title; } },
     downloads: { download: async (o) => { downloads.push(o); return downloads.length; }, onChanged: ev('dl') },
-    runtime: { onMessage: ev('msg') }
+    runtime: { onMessage: ev('msg') },
+    permissions: { contains: async () => false, onAdded: { addListener() {} }, onRemoved: { addListener() {} } }
   };
   const ctx = {
     browser, console: { log() {} }, TextDecoder, TextEncoder, AbortController, setTimeout, clearTimeout, crypto: globalThis.crypto, DOMParser, Blob,
@@ -39,8 +40,9 @@ function setup(fetchImpl, frameFetchImpl) {
   ctx.URL.createObjectURL = (b) => { blobs.push(b); return 'blob:moz-extension://x/' + blobs.length; };
   ctx.URL.revokeObjectURL = (u) => { revoked.push(u); };
   vm.createContext(ctx);
-  for (const f of ['lib/mpd.js', 'lib/mp4.js', 'lib/engine.js', 'lib/transcript.js']) vm.runInContext(fs.readFileSync(path.join(SRC, f), 'utf8'), ctx, { filename: f });
+  for (const f of ['lib/mpd.js', 'lib/mp4.js', 'lib/ts.js', 'lib/engine.js', 'lib/hls.js', 'lib/hlsdl.js', 'lib/detect.js', 'lib/transcript.js']) vm.runInContext(fs.readFileSync(path.join(SRC, f), 'utf8'), ctx, { filename: f });
   ctx.SSSink = { purgeAll: async () => {}, createSink: async () => { throw new Error('ne uporabljen'); } };
+  vm.runInContext(fs.readFileSync(path.join(SRC, 'background-generic.js'), 'utf8'), ctx, { filename: 'background-generic.js' });
   vm.runInContext(fs.readFileSync(path.join(SRC, 'background.js'), 'utf8'), ctx, { filename: 'background.js' });
   return { listeners, badges, downloads, fetchLog, blobs, frameLog, revoked, clock };
 }

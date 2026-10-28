@@ -1,6 +1,6 @@
 # Stream Saver
 
-Firefox razširitev za shranjevanje posnetkov predavanj iz Microsoft Stream (SharePoint/OneDrive, tudi Teams) in ločeno samo prepisa (.txt/.vtt) – **samo za osebno uporabo**.
+Firefox razširitev za shranjevanje posnetkov predavanj iz Microsoft Stream (SharePoint/OneDrive, tudi Teams) in ločeno samo prepisa (.txt/.vtt) – **samo za osebno uporabo**. Od 1.2.0 (neobvezno dovoljenje, vklopiš ga sam) tudi splošni video tokovi (HLS, DASH, MP4) na drugih straneh; **DRM se nikoli ne prenaša**, prijave in plačljivih vsebin razširitev ne obide, za spoštovanje pogojev spletnega mesta in avtorskih pravic si odgovoren sam.
 
 **Spoštovanje zaščite dostopa:** razširitev ne zaobide nobene zaščite. Shrani le tisto, kar tvoj brskalnik med predvajanjem že sam prejema, z isto prijavo, in samo za posnetke, ki jih lahko sam gledaš. Posnetkov in prepisov ne deli naprej. Ne uporabljaj je za posnetke, ki ti jih lastnik ni namenil.
 

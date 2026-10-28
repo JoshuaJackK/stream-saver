@@ -4,9 +4,13 @@ Razširitev za Firefox, s katero si posnetek predavanja, ki ga lahko gledaš v M
 (SharePoint/OneDrive, tudi kadar ga odpreš v Microsoft Teams), shraniš za osebno uporabo brez povezave,
 tudi kadar je gumb **Prenesi** onemogočen (dostop »samo za ogled«).
 
+Od različice **1.2.0** zna (po ročnem vklopu neobveznega dovoljenja) zaznati in shraniti tudi videe na **drugih straneh**
+(HLS, DASH, navadne datoteke MP4/WebM) – glej razdelek 6.
+
 Razširitev ne zaobide nobene zaščite dostopa: prenese le tisto, kar tvoj brskalnik med predvajanjem
 že prejema, in to z istimi piškotki, s katerimi si prijavljen. Uporabljaj jo samo za posnetke, do katerih
-imaš dostop, in jih ne deli naprej.
+imaš dostop, in jih ne deli naprej. **Samo za osebno uporabo; za spoštovanje pogojev spletnega mesta in
+avtorskih pravic si odgovoren sam.**
 
 ---
 
@@ -47,8 +51,8 @@ sami. **Različica 1.1.2 je prva, ki se posodablja sama**, vendar jo moraš name
 (koraki zgoraj). Od takrat naprej Firefox sam prebere
 `https://raw.githubusercontent.com/JoshuaJackK/stream-saver/main/updates.json` (običajno na ~24 ur) in
 prenese novo različico. Ročno preverjanje: `about:addons` → zobnik ⚙ → **Preveri posodobitve**
-(*Check for Updates*). Ker se dovoljenja med različicami ne spreminjajo, Firefox pri posodobitvi
-ne zahteva novega potrjevanja dovoljenj.
+(*Check for Updates*). Posodobitev na 1.2.0 **ne zahteva potrditve dovoljenj** (novo dovoljenje za vse strani je
+neobvezno in ga vklopiš sam, glej razdelek 6), zato se namesti sama.
 
 Če je isti Firefox profil opremljen z začasnim dodatkom (možnost A spodaj), ga pred namestitvijo odstrani
 oziroma ga ne uporabljaj hkrati.
@@ -116,7 +120,8 @@ Pri vsaki novi različici je treba v `src/manifest.json` povečati številko `ve
 
 ### Dovoljenja
 
-(Različice od 1.1.0 naprej ne zahtevajo novih dovoljenj.)
+Od 1.2.0 obstaja **neobvezno** dovoljenje »Dostop do podatkov na vseh straneh« (`<all_urls>`), ki se vklopi
+šele s klikom v razširitvi (razdelek 6). Brez njega razširitev deluje kot prej (samo Microsoft Stream/SharePoint/Teams).
 
 Ob namestitvi Firefox vpraša za dovoljenja: dostop do strani `sharepoint.com`, `svc.ms`,
 `teams.microsoft.com` in `cloud.microsoft` (zaznavanje in prenos posnetka), prenosi (shranjevanje
@@ -247,7 +252,71 @@ V obeh oblikah: vrstice z praznim besedilom se izpustijo, nič se ne združuje (
 - Posnetek v Teams (okvir): prepis je vezan na zavihek; če zavihek vsebuje več posnetkov, velja zadnji, ki ga je predvajalnik naložil.
 - Prepis je besedilo, ki ga je ustvaril Microsoft, in je lahko napačen (imena, strokovni izrazi). Popravek kodiranja zajema samo znake è, È, ë, Ë; morebitne druge napake v izvornem besedilu ostanejo.
 
-## 6. Težave in omejitve
+## 6. Splošni video tokovi na drugih straneh (od 1.2.0)
+
+**Samo za osebno uporabo.** Uporabljaj to za posnetke, ki jih smeš gledati in si jih shraniti za ogled brez povezave
+(npr. predavanja, ki si jih lahko ogledaš sam). **Za spoštovanje pogojev uporabe spletnega mesta in avtorskih pravic si
+odgovoren sam.** Posnetkov ne deli naprej in ne objavljaj.
+
+### Trdne omejitve (v kodi, ne samo v navodilih)
+
+- **DRM se nikoli ne prenaša.** Če je tok zaščiten (HLS `SAMPLE-AES`/`KEYFORMAT` Apple FairPlay, Microsoft PlayReady, Widevine;
+  DASH `ContentProtection` Widevine/PlayReady/FairPlay; šifrirani CENC segmenti), razširitev prenos **zavrne** (»Posnetek je
+  zaščiten z DRM«) še preden prenese kakšen segment. Takih posnetkov ni mogoče shraniti in tega ne poskuša obiti.
+- **Prijave in plačljivih vsebin ne obide.** Prenese samo tisto, kar zahteva predvajalnik strani sam, z **istimi piškotki** (tvoja seja).
+  Ne ugiba naslovov, ne ponareja prijave, ne spreminja dostopa.
+- **Prenosi v živo** (seznam brez `#EXT-X-ENDLIST`, DASH `type="dynamic"`) so zavrnjeni z jasnim sporočilom.
+- Naslovi **YouTube** (`googlevideo.com`) se ne obravnavajo: zahteve so razdrobljeni kosi, ne en posnetek.
+- Oglaševalska omrežja se ne ponujajo.
+
+### Kaj podpira
+
+| Vrsta | Kaj se zgodi |
+| --- | --- |
+| **HLS** (`.m3u8`) | Glavni seznam: izbereš kakovost (privzeto najvišja pasovna širina) in zvočno sled; podpora za `EXT-X-MAP`, `BYTERANGE`, fMP4 in MPEG-TS segmente ter **AES-128** (ključ z naslova v seznamu, IV iz seznama ali zaporedne številke). Rezultat je običajna **MP4**. |
+| **DASH** (`.mpd`) | Kot pri Streamu: **najvišja kakovost** videa + zvok v eno MP4 (izbire kakovosti ni). |
+| **Navadna datoteka** (`video/*`, `.mp4`, `.webm`) | Prenese se po delih (Range) in shrani **brez spreminjanja** (isto kot na strežniku). |
+
+MPEG-TS (H.264 + AAC/MP3) se **pretvori v MP4 brez ponovnega kodiranja** (lastna majhna pretvorba, pri kateri se ohrani zamik med
+sliko in zvokom). Če TS vsebuje kodek, ki ga pretvorba ne zna (npr. **HEVC/H.265**), se shrani surov **.ts**; v tem primeru
+popup pokaže ukaz: `ffmpeg -i vhod.ts -c copy izhod.mp4` (ffmpeg ga zna pretvoriti).
+
+### Vklop (enkrat)
+
+Dovoljenje je **neobvezno** in se **ne zahteva ob posodobitvi**, zato se 1.2.0 namesti brez vprašanja. Zaznavanje na drugih straneh vklopiš sam:
+
+1. Klikni ikono Stream Saver v orodni vrstici (na strani, ki ni Stream).
+2. Klikni **Vklopi zaznavanje na vseh straneh** in v Firefoxovem oknu potrdi (»Dostop do podatkov na vseh straneh«). Dovoljenje lahko kadarkoli
+   umakneš z gumbom **Izklopi zaznavanje na vseh straneh** v istem oknu ali v `about:addons` → Stream Saver → **Dovoljenja**.
+3. **Osveži stran z videom (F5)** in predvajaj nekaj sekund. (Skripta s plavajočim gumbom se v že odprte strani ne vstavi sama.)
+
+Zakaj tako: razširitev mora za zaznavo videa brati **glave** omrežnih zahtev (ne pa vsebine strani). Razširitev ne pošilja nič nikamor
+drugam, vse ostane v brskalniku.
+
+### Uporaba
+
+- Ko je tok zaznan, se pojavi majhen gumb **▼ Stream Saver** (privzeto spodaj levo; **povleci** ga na drugo mesto). Pojavi se šele po zaznavi,
+  na vsaki strani posebej ga lahko **skriješ** (**Skrij na tej strani**; skritje razveljaviš v oknu razširitve).
+- Klik odpre ploščo: seznam zaznanih tokov (vrsta HLS/DASH/MP4, ločljivost, trajanje, velikost – če so znani), izbereš tok (privzeto glavni),
+  kakovost (HLS), **ime datoteke** (privzeto naslov strani), podmapa in **Vprašaj, kam naj shranim** (iz nastavitev razširitve, razdelek 4).
+- Zelo kratki tokovi (< 8 s), samo zvok in verjetni predogledi/oglasi so v seznamu, vendar označeni; drobne datoteke (< 0,5 MB) se ne prikažejo.
+- Isto je na voljo v oknu razširitve (ikona v orodni vrstici). Stanje se ob prehodu na drugo stran ponastavi.
+- Na straneh Microsoft Stream/SharePoint/Teams ostane obstoječe vedenje (gumb **Prenesi posnetek**); splošno zaznavanje tam ne podvaja.
+
+### Omejitve in poštena opozorila
+
+- **Referer/Origin:** prenos najprej poskusi razširitev sama (s piškotki, brez glave Referer); če strežnik zavrne (401/403) ali ne odgovori, poskusi
+  še prek okvirja strani (z izvorom, piškotki in Referer strani, vendar velja enaka omejitev CORS kot za stran). Nekatera spletna mesta
+  prenos kljub temu zavrnejo (npr. kratkotrajni žetoni, podpisani naslovi, ki so že potekli) – takrat osveži stran, predvajaj nekaj sekund in poskusi znova.
+- Videov, ki se nalagajo iz **Web Workerjev**, **blob:** naslovov ali prek MSE brez omrežne zahteve za datoteko, razširitev ne vidi.
+- Prenos je **v pomnilniku, kjer ni drugače mogoče**: HLS/DASH se sproti zapiše na disk (začasna shramba), vendar se pri pretvorbi v klasičen MP4 in
+  pri navadnih datotekah brez podpore za Range celotna datoteka naloži v pomnilnik. Zelo velikih posnetkov (več GB) v takem primeru ne prenašaj.
+- DASH: samo najvišja kakovost, ena zvočna sled. HLS: ena zvočna sled (izbrana/privzeta); podnapisi se ne shranijo.
+- Prenosa ni mogoče nadaljevati; med prenosom zavihka ne zapiraj.
+- **Nič od tega ni bilo preizkušeno na živih spletnih mestih** s pravim Firefoxom: testi uporabljajo sintetične HLS/DASH/MP4 datoteke (ffmpeg),
+  preverjene z ffprobe/ffmpeg. Če kakšno mesto ne deluje, je to pričakovano za nekatera; sporoči, kaj se je zgodilo.
+
+## 7. Težave in omejitve
 
 | Težava | Kaj narediti |
 | --- | --- |
@@ -259,6 +328,12 @@ V obeh oblikah: vrstice z praznim besedilom se izpustijo, nič se ne združuje (
 | Datoteka je samo video (brez zvoka) | Predvajaj posnetek 10–20 s, da se naloži tudi zvočna sled, nato znova Prenesi. V 1.0.3 razširitev bolje zazna zvok tudi, kadar Stream označi zvočni AdaptationSet kot `video/mp4`. |
 | VLC predvaja samo video, WMP pa tudi zvok | Starejši prenosi (1.0.1/1.0.2) so fragmentiran MP4; VLC pri njih pogosto ne predvaja zvoka. **Takoj** (PowerShell): `ffmpeg -i ".\vhod.mp4" -c copy -movflags +faststart ".\izhod.mp4"`. Od 1.0.3 razširitev shrani klasičen MP4. |
 | Prepis ni zaznan | Osveži stran (F5); glej razdelek 5. |
+| Gumba za splošne tokove ni | Preveri, da je dovoljenje vklopljeno (okno razširitve → **Vklopi zaznavanje na vseh straneh**), nato **osveži stran (F5)** in predvajaj video. Gumb je lahko tudi skrit (»Skrij na tej strani«). |
+| Tok ni na seznamu | Predvajaj nekaj sekund po osvežitvi; video iz Web Workerja/`blob:` ali YouTube razširitev ne zazna (razdelek 6). |
+| »Posnetek je zaščiten z DRM« (splošni tokovi) | Zaščiteni posnetki se **ne prenašajo** in tega ne bo mogoče obiti. |
+| »To je živi prenos …« | Počakaj, da se oddaja konča in posnetek postane običajen, nato poskusi znova. |
+| Splošni tok: HTTP 401/403 | Osveži stran, predvajaj nekaj sekund (žetoni potečejo) in poskusi znova; nekatera mesta zavrnejo prenos zunaj predvajalnika. |
+| Dobim datoteko .ts namesto .mp4 | Kodek (npr. HEVC) ni podprt za pretvorbo: `ffmpeg -i vhod.ts -c copy izhod.mp4`. |
 | Posnetek v Teams | Najbolj zanesljivo je odpreti posnetek neposredno v Streamu (v Teams: ⋯ → *Odpri v brskalniku* / *Open in Stream*). |
 
 Znane omejitve:
@@ -271,11 +346,11 @@ Znane omejitve:
   včasih ni predvajal zvoka; pretvori jih z: `ffmpeg -i vhod.mp4 -c copy -movflags +faststart izhod.mp4`.
 - Microsoft svoj predvajalnik pogosto spreminja; če preneha delovati, je verjetno treba posodobiti razširitev.
 
-## 7. Za razvijalce
+## 8. Za razvijalce
 
 ```
 npm install          # namesti @xmldom/xmldom za teste
-npm test             # testi (razčlenjevanje manifesta, združevanje MP4 z ffmpeg, AES, 429, ozadje, prepis JSON → VTT/TXT)
+npm test             # testi (razčlenjevanje manifesta, združevanje MP4 z ffmpeg, AES, 429, ozadje, prepis JSON → VTT/TXT, HLS/DASH/MP4 end-to-end s sintetičnimi ffmpeg datotekami)
 npm run lint         # web-ext lint --self-hosted
 npm run build        # dist/stream-saver-<različica>.xpi (nepodpisana)
 ```
@@ -284,5 +359,5 @@ Izdajanje nove različice (podpis, GitHub Release, `updates.json`): glej `RELEAS
 
 Zgradba: `src/background.js` (zaznavanje, prenosi, značka), `src/content.js` (ključ in ime iz
 predvajalnika, prenos prek okvirja), `src/lib/mpd.js` (DASH), `src/lib/mp4.js` (združevanje MP4),
-`src/lib/engine.js` (prenos, ponovni poskusi, dešifriranje), `src/lib/sink.js` (zapis na disk), `src/lib/transcript.js` (zaznava zahteve za prepis, pretvorba JSON → VTT/TXT), `src/popup/`.
+`src/lib/engine.js` (prenos, ponovni poskusi, dešifriranje), `src/lib/sink.js` (zapis na disk), `src/lib/hls.js`, `src/lib/hlsdl.js`, `src/lib/ts.js` (HLS in MPEG-TS → MP4), `src/lib/detect.js` + `src/background-generic.js` + `src/content-generic.js` + `src/popup/popup-generic.js` (splošno zaznavanje), `src/lib/transcript.js` (zaznava zahteve za prepis, pretvorba JSON → VTT/TXT), `src/popup/`.
 Prepis: `src/background.js` zazna zahtevo `format=json` (webRequest), isti naslov prebere z `fetch` (po potrebi prek okvirja predvajalnika) in ga shrani prek `downloads`; `filterResponseData` se ne uporablja (dovoljenja so ostala enaka).

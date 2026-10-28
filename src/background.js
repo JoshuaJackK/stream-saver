@@ -20,10 +20,13 @@ function hasTranscript(s) { return !!(s && s.transcript && (s.transcript.status 
 // ---------------- badge ----------------
 function setBadge(tabId) {
   const s = tabs.get(tabId);
+  const g = (!hasDetection(s) || (s && s.job)) && typeof SSGen !== 'undefined' ? SSGen.badge(tabId) : null;
   let text = '', color = '#2e7d32', title = 'Stream Saver – ni zaznanega posnetka';
   if (s && s.job && s.job.status === 'running') {
     const pct = s.job.total ? Math.floor((s.job.done / s.job.total) * 100) : 0;
     text = pct + '%'; color = '#1565c0'; title = `Stream Saver – prenašam (${pct} %)`;
+  } else if (g && g.job) {
+    text = g.text; color = g.color; title = g.title;
   } else if (s && s.job && s.job.status === 'error') {
     text = '!'; color = '#c62828'; title = 'Stream Saver – napaka pri prenosu';
   } else if (s && s.job && s.job.status === 'done') {
@@ -31,6 +34,8 @@ function setBadge(tabId) {
   } else if (hasDetection(s)) {
     text = '▼'; color = '#2e7d32'; title = 'Stream Saver – posnetek zaznan, klikni za prenos';
     if (hasTranscript(s)) title += ' (prepis zaznan)';
+  } else if (g) {
+    text = g.text; color = g.color; title = g.title;
   } else if (hasTranscript(s)) {
     text = 'T'; color = '#2e7d32'; title = 'Stream Saver – prepis zaznan, klikni za shranjevanje';
   }
@@ -110,6 +115,7 @@ const FILTER = {
 browser.webRequest.onBeforeSendHeaders.addListener(onRequest, FILTER, ['requestHeaders']);
 
 browser.tabs.onRemoved.addListener((tabId) => {
+  SSGen.remove(tabId);
   const s = tabs.get(tabId);
   if (!s || !s.job || s.job.status !== 'running') tabs.delete(tabId);
   if (lastMediaTab === tabId) lastMediaTab = null;
@@ -117,6 +123,7 @@ browser.tabs.onRemoved.addListener((tabId) => {
 function stripHash(u) { return String(u || '').split('#')[0]; }
 browser.tabs.onUpdated.addListener((tabId, info) => {
   if (info.status === 'loading' && info.url) {
+    if (SSGen.reset(tabId)) setBadge(tabId);
     const s = tabs.get(tabId);
     if (s && !(s.job && s.job.status === 'running')) {
       tabs.delete(tabId);
@@ -248,7 +255,7 @@ async function bgFetch(url, opts, spopactoken) {
   if (spopactoken && /\.svc\.ms/i.test(new URL(url).host)) headers['x-spopactoken'] = spopactoken;
   const r = await fetch(url, { credentials: 'include', headers, signal: opts && opts.signal, cache: 'no-store' });
   const ok = r.status >= 200 && r.status < 300;
-  return { status: r.status, retryAfter: r.headers.get('Retry-After'), buffer: ok ? await r.arrayBuffer() : null, contentType: r.headers.get('Content-Type') };
+  return { status: r.status, retryAfter: r.headers.get('Retry-After'), contentRange: r.headers.get('Content-Range'), buffer: ok ? await r.arrayBuffer() : null, contentType: r.headers.get('Content-Type') };
 }
 async function frameFetch(tabId, frameId, url, opts, spopactoken) {
   const headers = {};
@@ -534,6 +541,7 @@ function summary(tabId, tab) {
 
 browser.runtime.onMessage.addListener((msg, sender) => {
   if (!msg || !msg.type) return undefined;
+  if (String(msg.type).startsWith('ss-g-')) return SSGen.onMessage(msg, sender);
   if (msg.type === 'ss-page' && sender.tab) {
     const s = tabState(sender.tab.id);
     const prev = s.page || {};
@@ -632,3 +640,6 @@ browser.runtime.onMessage.addListener((msg, sender) => {
 
 // leftovers from a crash / browser restart
 SSSink.purgeAll();
+
+// splošno zaznavanje (neobvezno dovoljenje <all_urls>)
+SSGen.init({ LOG, setBadge, pendingDownloads, hasStream: (tabId) => hasDetection(tabs.get(tabId)) });

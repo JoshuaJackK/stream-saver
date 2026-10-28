@@ -99,6 +99,11 @@
     };
   }
 
+  function drmErr() {
+    const e = new Error('Posnetek je zaščiten z DRM (CENC: encv/enca) – prenos ni mogoč.');
+    e.code = 'DRM'; return e;
+  }
+
   function trexFor(init, trackId) {
     if (!init.mvex) return null;
     return children(init.bytes, init.mvex, 'trex').find((t) => u32(init.bytes, t.start + 12) === trackId) || null;
@@ -120,7 +125,7 @@
     parsed.forEach((p, i) => {
       if (p.traks.length !== 1) throw new Error('Pričakovana je natanko ena sled na inicializacijski segment (najdenih: ' + p.traks.length + ').');
       const t = p.traks[0];
-      if (t.encrypted) throw new Error('Sled je zaščitena s CENC/DRM (encv/enca) – prenos ni mogoč.');
+      if (t.encrypted) throw drmErr();
       const newId = i + 1;
       const trak = slice(p.bytes, t.box);
       w32(trak, t.idOff - t.box.start, newId);
@@ -153,7 +158,7 @@
   /** For a single-track download: keep init as-is (ftyp+moov only). */
   function singleInit(b, opts) {
     const p = parseInit(b);
-    if (p.traks.some((t) => t.encrypted)) throw new Error('Sled je zaščitena s CENC/DRM (encv/enca) – prenos ni mogoč.');
+    if (p.traks.some((t) => t.encrypted)) throw drmErr();
     const parts = [];
     if (p.ftyp) parts.push(slice(b, p.ftyp));
     parts.push(slice(b, p.moov));
@@ -374,7 +379,8 @@
    * (ftyp+moov+mdat) that VLC plays with both audio and video.
    * If input is already non-fragmented, returns it unchanged (as Uint8Array copy if needed).
    */
-  function defragmentToProgressive(input, onProgress) {
+  function defragmentToProgressive(input, onProgress, opts) {
+    opts = opts || {};
     const b = input instanceof Uint8Array ? input : new Uint8Array(input);
     const top = boxes(b);
     const moofCount = top.filter((x) => x.type === 'moof').length;
@@ -422,6 +428,10 @@
         const ts = byId[tid];
         if (!ts) continue;
         const parsed = parseTrafSamples(b, traf, ts.defs);
+        if (opts.edits && ts.firstTfdt === undefined) {
+          const tfdt = child(b, traf, 'tfdt');
+          if (tfdt) ts.firstTfdt = b[tfdt.start + 8] === 1 ? u64(b, tfdt.start + 12) : u32(b, tfdt.start + 12);
+        }
         // Payload: contiguous sample bytes inside mdat. For standard DASH, data_offset
         // points from start of moof; samples are packed in order at the start of mdat body
         // when default-base-is-moof is set. We take sequential bytes from mdat for this traf's sizes.
@@ -452,7 +462,20 @@
 
     // Precompute mdat layout offsets (after we know moov size we patch stco — two-pass)
     // Pass A: build each trak with placeholder stco(0)
-    const built = trackState.map((ts) => {
+    // Neobvezni seznam urejanja (edts/elst): ohrani zamik začetka zvoka/videa in zamik zaradi B-sličic.
+    // Vklopi ga samo klicatelj (HLS/TS); DASH/Stream pot ostane nespremenjena.
+    let editInfo = null;
+    if (opts.edits) {
+      editInfo = trackState.map((ts) => {
+        const sc = ts.info.timescale || 1;
+        const cts0 = ts.samples.length && ts.info.handler === 'vide' ? Math.max(0, ts.samples[0].ctsOffset || 0) : 0;
+        const start = ((ts.firstTfdt || 0) + cts0) / sc;
+        return { start, cts0, sc };
+      });
+      const origin = Math.min.apply(null, editInfo.map((e) => e.start));
+      editInfo.forEach((e) => { e.delaySec = e.start - origin; });
+    }
+    const built = trackState.map((ts, tIdx) => {
       if (!ts.samples.length) throw new Error('Sled ' + ts.info.trackId + ' nima vzorcev.');
       const payload = concat(ts.chunks);
       const mdia = child(b, ts.trak, 'mdia');
@@ -478,7 +501,22 @@
       const tkhdP = new Uint8Array(tkhd);
       const tkv = tkhdP[8];
       const mediaTs = ts.info.timescale || 1;
-      const movieDur = Math.round(dur * movieTimescale / mediaTs);
+      let movieDur = Math.round(dur * movieTimescale / mediaTs);
+      let edts = null;
+      if (editInfo) {
+        const e = editInfo[tIdx];
+        const delay = e.delaySec > 0.005 ? Math.round(e.delaySec * movieTimescale) : 0;
+        const skip = Math.round(e.cts0 * movieTimescale / mediaTs);
+        const play = Math.max(0, movieDur - skip);
+        if (delay || e.cts0) {
+          const ent = [];
+          const e32 = (v) => { const a = new Uint8Array(4); w32(a, 0, v >>> 0); return a; };
+          if (delay) ent.push(e32(delay), e32(0xffffffff), e32(0x00010000));
+          ent.push(e32(play), e32(e.cts0), e32(0x00010000));
+          edts = box('edts', [fullBox('elst', 0, 0, concat([e32(delay ? 2 : 1)].concat(ent)))]);
+          movieDur = delay + play;
+        }
+      }
       w32(tkhdP, tkv === 1 ? 36 : 28, movieDur >>> 0);
 
       const stts = buildStts(ts.samples);
@@ -499,7 +537,7 @@
       const stblBox = box('stbl', stblParts);
       const minfBox = box('minf', [xmhd, dinf, stblBox]);
       const mdiaBox = box('mdia', [mdhdP, hdlr, minfBox]);
-      const trakBox = box('trak', [tkhdP, mdiaBox]);
+      const trakBox = box('trak', edts ? [tkhdP, edts, mdiaBox] : [tkhdP, mdiaBox]);
       return { trakBox, payload, movieDur, mediaDur: dur };
     });
 
