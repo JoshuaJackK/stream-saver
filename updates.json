@@ -1,7 +1,13 @@
 {
   "addons": {
     "stream-saver@kajzer.personal": {
-      "updates": []
+      "updates": [
+        {
+          "version": "1.1.2",
+          "update_link": "https://github.com/JoshuaJackK/stream-saver/releases/download/v1.1.2/stream-saver-1.1.2.xpi",
+          "update_hash": "sha256:6b665d6676f484bf8b35a6ca2815f281424489ad7846a386bb4abec750a306f0"
+        }
+      ]
     }
   }
 }
