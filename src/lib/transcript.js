@@ -101,13 +101,21 @@
     };
   }
 
+  /**
+   * Microsoft v prepisu besede »če/Če/četudi/že« včasih zapiše kot »èe/Èe/èetudi/ëe«. Znaki è, È, ë, Ë v slovenščini
+   * ne obstajajo, zato jih ob shranjevanju vedno zamenjamo: è→č, È→Č, ë→ž, Ë→Ž (samo pri izvozu; podatki ostanejo nespremenjeni).
+   */
+  function fixEncoding(str) {
+    return String(str).replace(/[èÈëË]/g, (c) => ({ 'è': 'č', 'È': 'Č', 'ë': 'ž', 'Ë': 'Ž' })[c]);
+  }
+
   const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
   /** WebVTT: ena replika na vrstico prepisa, govorec kot <v Ime>…</v>, brez združevanja. */
   function toVtt(parsed) {
     const cues = parsed.entries.map((e) => {
-      const body = esc(e.text);
-      const line = e.speaker ? `<v ${esc(e.speaker)}>${body}</v>` : body;
+      const body = esc(fixEncoding(e.text));
+      const line = e.speaker ? `<v ${esc(fixEncoding(e.speaker))}>${body}</v>` : body;
       return `${formatVttTime(e.startMs)} --> ${formatVttTime(e.endMs)}\n${line}`;
     });
     return 'WEBVTT\n\n' + cues.join('\n\n') + (cues.length ? '\n' : '');
@@ -116,8 +124,8 @@
   /** Berljivo besedilo: ena vrstica na vrstico prepisa, `[H:MM:SS] Ime: besedilo`; UTF-8 z BOM (Beležnica), konci vrstic CRLF. */
   function toTxt(parsed) {
     const lines = parsed.entries.map((e) => {
-      const body = e.text.replace(/\n/g, ' ');
-      return `[${formatTxtTime(e.startMs)}] ${e.speaker ? e.speaker + ': ' : ''}${body}`;
+      const body = fixEncoding(e.text).replace(/\n/g, ' ');
+      return `[${formatTxtTime(e.startMs)}] ${e.speaker ? fixEncoding(e.speaker) + ': ' : ''}${body}`;
     });
     return '\uFEFF' + lines.join('\r\n') + (lines.length ? '\r\n' : '');
   }
@@ -136,7 +144,7 @@
     return s;
   }
 
-  const api = { matchViewRequest, parseOffset, formatVttTime, formatTxtTime, parseTranscript, toVtt, toTxt, plural, describe };
+  const api = { matchViewRequest, parseOffset, formatVttTime, formatTxtTime, parseTranscript, toVtt, toTxt, fixEncoding, plural, describe };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.SSTranscript = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

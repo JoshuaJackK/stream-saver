@@ -33,7 +33,7 @@ Razširitev je javno na GitHubu: <https://github.com/JoshuaJackK/stream-saver>. 
 
 ### Priporočeno: podpisana različica z GitHuba (samodejne posodobitve)
 
-1. Odpri <https://github.com/JoshuaJackK/stream-saver/releases/latest> in prenesi `stream-saver-1.1.1.xpi`
+1. Odpri <https://github.com/JoshuaJackK/stream-saver/releases/latest> in prenesi `stream-saver-1.1.2.xpi`
    (ali novejšo različico).
 2. Odpri datoteko v Firefoxu (povleci jo v okno Firefoxa ali: `about:addons` → zobnik ⚙ →
    **Namesti dodatek iz datoteke …**) in potrdi z **Dodaj**. Podpisana razširitev ostane nameščena tudi po
@@ -43,7 +43,7 @@ Razširitev je javno na GitHubu: <https://github.com/JoshuaJackK/stream-saver>. 
 
 **Pomembno – prva ročna namestitev:** Firefox se samodejno posodablja samo pri razširitvah, ki že vsebujejo
 naslov za posodobitve (`update_url`). Različici 1.0.x in 1.1.0 ga **nimata**, zato se ne moreta posodobiti
-sami. **Različica 1.1.1 je prva, ki se posodablja sama**, vendar jo moraš namestiti **ročno, enkrat**
+sami. **Različica 1.1.2 je prva, ki se posodablja sama**, vendar jo moraš namestiti **ročno, enkrat**
 (koraki zgoraj). Od takrat naprej Firefox sam prebere
 `https://raw.githubusercontent.com/JoshuaJackK/stream-saver/main/updates.json` (običajno na ~24 ur) in
 prenese novo različico. Ročno preverjanje: `about:addons` → zobnik ⚙ → **Preveri posodobitve**
@@ -63,7 +63,7 @@ Razširitev ostane nameščena le do zaprtja Firefoxa.
 
 1. V naslovno vrstico vpiši `about:debugging#/runtime/this-firefox` in pritisni Enter.
 2. Klikni **Naloži začasni dodatek …** (*Load Temporary Add-on…*).
-3. Izberi datoteko `stream-saver-1.1.1.xpi` (ali `manifest.json` v mapi `src`).
+3. Izberi datoteko `stream-saver-1.1.2.xpi` (ali `manifest.json` v mapi `src`).
 4. Ikona Stream Saver se prikaže v orodni vrstici. Če je ne vidiš, klikni ikono sestavljanke
    (Razširitve) in jo pripni.
 
@@ -88,7 +88,7 @@ objavljena, Mozilla jo samo samodejno pregleda in podpiše.
 1. Odpri <https://addons.mozilla.org/developers/> in se prijavi oz. ustvari račun Mozilla.
 2. Klikni **Submit a New Add-on** (Oddaj nov dodatek).
 3. Pri vprašanju, kje bo dodatek objavljen, izberi **On your own** (sam ga bom distribuiral – *unlisted*).
-4. Naloži datoteko `stream-saver-1.1.1.xpi` in počakaj na samodejno preverjanje.
+4. Naloži datoteko `stream-saver-1.1.2.xpi` in počakaj na samodejno preverjanje.
 5. Ko je dodatek podpisan (običajno v nekaj minutah, včasih dlje), na strani dodatka prenesi
    **podpisano** datoteko `.xpi`.
 6. V Firefoxu odpri `about:addons`, klikni zobnik ⚙ → **Namesti dodatek iz datoteke …** in izberi
@@ -110,13 +110,13 @@ Pri vsaki novi različici je treba v `src/manifest.json` povečati številko `ve
 1. Namesti Firefox Developer Edition (<https://www.mozilla.org/firefox/developer/>) ali Firefox ESR.
 2. Odpri `about:config`, sprejmi opozorilo, poišči `xpinstall.signatures.required` in ga z dvoklikom
    nastavi na `false`.
-3. Odpri `about:addons` → ⚙ → **Namesti dodatek iz datoteke …** → izberi `stream-saver-1.1.1.xpi`.
+3. Odpri `about:addons` → ⚙ → **Namesti dodatek iz datoteke …** → izberi `stream-saver-1.1.2.xpi`.
 
 (V navadnem Firefoxu ta nastavitev nima učinka.)
 
 ### Dovoljenja
 
-(Različice 1.1.0 in 1.1.1 ne zahtevata novih dovoljenj.)
+(Različice od 1.1.0 naprej ne zahtevajo novih dovoljenj.)
 
 Ob namestitvi Firefox vpraša za dovoljenja: dostop do strani `sharepoint.com`, `svc.ms`,
 `teams.microsoft.com` in `cloud.microsoft` (zaznavanje in prenos posnetka), prenosi (shranjevanje
@@ -225,6 +225,8 @@ Od različice 1.1.0 lahko posnetku **ločeno od videa** shraniš samo prepis gov
 | **Besedilo (.txt)** – *privzeto* | `ime posnetka.txt` | Berljivo besedilo, ena vrstica na vrstico prepisa: `[H:MM:SS] Ime Priimek: besedilo`. Brez govorca: `[H:MM:SS] besedilo`. UTF-8 z BOM, vrstice se končajo z CRLF, zato Beležnica v Windows pravilno prikaže šumnike. |
 | **Podnapisi (.vtt)** | `ime posnetka.vtt` | WebVTT: ena replika na vrstico prepisa, čas `HH:MM:SS.mmm --> HH:MM:SS.mmm` (zaokroženo na milisekunde), govorec kot `<v Ime Priimek>besedilo</v>` (če ime govorca manjka, brez oznake). Znaki `<`, `>`, `&` so pretvorjeni v `&lt;`, `&gt;`, `&amp;`. UTF-8 brez BOM. Primerno za VLC/mpv ob videu z istim imenom. |
 
+**Popravek kodiranja (vedno vklopljen):** Microsoft v prepisu besede *če/Če/četudi* zapiše kot *èe/Èe/èetudi*, besedo *že* pa (vsaj ponekod) kot *ëe*. Razširitev jih ob shranjevanju popravi: `è→č`, `È→Č`, `ë→ž`, `Ë→Ž` (v besedilu in v imenih govorcev, v .txt in .vtt). Teh znakov v slovenščini ni, zato popravek ne spremeni pravilnih besed. Popravek ni izklopljiv; originalni podatki iz Streama se ne spreminjajo, popravi se samo shranjena datoteka.
+
 V obeh oblikah: vrstice z praznim besedilom se izpustijo, nič se ne združuje (ena vrstica prepisa = ena vrstica v datoteki), vrstice so razvrščene po času.
 
 ### Če prepis ni zaznan
@@ -243,7 +245,7 @@ V obeh oblikah: vrstice z praznim besedilom se izpustijo, nič se ne združuje (
 - Če se po osvežitvi (F5) prepis ne pojavi, prepisa ne poskušaj dobiti z drugimi povezavami – razširitev tega namenoma ne podpira.
 - Hitro preklapljanje med posnetki brez nalaganja strani (v Streamu): razširitev ob spremembi naslova (po nekaj sekundah) ali novem prepisu prepis prejšnjega posnetka zavrže; preden shraniš, preveri v oknu, da se število vrstic ujema s pričakovanim, po potrebi pritisni F5.
 - Posnetek v Teams (okvir): prepis je vezan na zavihek; če zavihek vsebuje več posnetkov, velja zadnji, ki ga je predvajalnik naložil.
-- Prepis je besedilo, ki ga je ustvaril Microsoft, in je lahko napačen (imena, strokovni izrazi).
+- Prepis je besedilo, ki ga je ustvaril Microsoft, in je lahko napačen (imena, strokovni izrazi). Popravek kodiranja zajema samo znake è, È, ë, Ë; morebitne druge napake v izvornem besedilu ostanejo.
 
 ## 6. Težave in omejitve
 

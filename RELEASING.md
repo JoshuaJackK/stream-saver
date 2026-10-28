@@ -11,9 +11,9 @@ Razširitev je podpisana na AMO kot **unlisted** (ni javno na addons.mozilla.org
 
 ## Prva ročna namestitev (enkrat)
 Firefox se samodejno posodablja samo pri razširitvah, ki že vsebujejo `update_url`. Različice **1.0.x in 1.1.0 ga nimajo**,
-zato se ne posodobijo same. **Različica 1.1.1 je prva s samodejnim posodabljanjem** – namesti jo ročno, enkrat:
+zato se ne posodobijo same. **Različica 1.1.2 je prva s samodejnim posodabljanjem** – namesti jo ročno, enkrat:
 
-1. Prenesi `stream-saver-1.1.1.xpi` iz [Releases](https://github.com/JoshuaJackK/stream-saver/releases/latest).
+1. Prenesi `stream-saver-1.1.2.xpi` iz [Releases](https://github.com/JoshuaJackK/stream-saver/releases/latest).
 2. Odpri jo v Firefoxu (povleci v okno ali `about:addons` → ⚙ → **Namesti dodatek iz datoteke …**) in potrdi **Dodaj**.
    Isti id pomeni, da se prejšnja različica prepiše in nastavitve ostanejo.
 
@@ -26,10 +26,10 @@ commitaj in ne izpisuj).
 
 ```bash
 # vse spremembe commitane in pushane, nato:
-./release.sh 1.1.2
+./release.sh 1.1.3
 ```
 Skripta: dvigne verzijo v `src/manifest.json`, `package.json` in `package-lock.json` → zažene `npm test` in `npm run lint` (`web-ext lint --self-hosted`)
-→ podpiše (`web-ext sign -s src --channel=unlisted`, počaka na odobritev) → commit + tag `v1.1.2` + push → GitHub Release s `stream-saver-1.1.2.xpi`
+→ podpiše (`web-ext sign -s src --channel=unlisted`, počaka na odobritev) → commit + tag `v1.1.3` + push → GitHub Release s `stream-saver-1.1.3.xpi`
 → doda vnos (verzija, povezava, sha256) v `updates.json` in ga pushne → preveri obe URL‑ja s curl (pričakovano `200`).
 
 Pravila: verzija mora biti vedno višja od prejšnje; ista verzija se na AMO ne more podpisati dvakrat.

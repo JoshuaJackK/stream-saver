@@ -138,3 +138,15 @@ test('matchViewRequest: samo format=json pogled predvajalnika', () => {
   assert.equal(T.matchViewRequest(ok.replace('https:', 'http:')), null);
   assert.equal(T.matchViewRequest('not a url'), null);
 });
+
+test('popravek kodiranja: èe/Èe/èetudi/ëe → če/Če/četudi/že v TXT in VTT (besedilo + govorec), šumniki nespremenjeni', () => {
+  assert.equal(T.fixEncoding('Èe danes, èetudi, ëe no'), 'Če danes, četudi, že no');
+  assert.equal(T.fixEncoding('ËENO ëeno ÈE'), 'ŽENO ženo ČE');
+  const ok = 'Čebele šumijo, žuželke ščebetajo – Ž Š Č č š ž ć đ é';
+  assert.equal(T.fixEncoding(ok), ok);
+  const mk = (text, name) => JSON.stringify({ entries: [{ text, speakerDisplayName: name, speakerId: 's1', startOffset: '00:00:01.0000000', endOffset: '00:00:02.0000000', spokenLanguageTag: 'sl-si' }] });
+  const p = T.parseTranscript(mk('Èe danes, èetudi, ëe no. Šum & žuželke.', 'Ëiga Èuk'));
+  assert.equal(p.entries[0].text, 'Èe danes, èetudi, ëe no. Šum & žuželke.', 'razčlenjeni podatki ostanejo nespremenjeni');
+  assert.equal(T.toTxt(p), '\uFEFF[0:00:01] Žiga Čuk: Če danes, četudi, že no. Šum & žuželke.\r\n');
+  assert.equal(T.toVtt(p), 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n<v Žiga Čuk>Če danes, četudi, že no. Šum &amp; žuželke.</v>\n');
+});
