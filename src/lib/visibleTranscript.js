@@ -30,19 +30,33 @@
   function parseAriaLabel(label) {
     if (typeof label !== 'string') return null;
     const s = label.trim();
-    // Preverjene oblike: "… N h|ura M min [S s]" (sekunde neobvezne), "… N min S s", "… N s".
-    // Enote h|ura (ne "ure"/"ur"/"hour"); minute so v vseh opazovanih vzorcih z urami.
+    // Preverjene oblike:
+    // "… N h|ura M min [S s]", "… N h|ura S s", "… N min S s", "… N min", "… N s".
+    // Enote h|ura (ne "ure"/"ur"/"hour"). Minute z uro: 0–59; samostojne minute so lahko >59.
     let m = /^(.*?)\s+(\d+)\s*(?:h|ura)\s+(\d+)\s*min(?:\s+(\d+)\s*s)?\s*$/i.exec(s);
     if (m) {
       const hours = +m[2], mins = +m[3], secs = m[4] != null ? +m[4] : 0;
       if (mins > 59 || secs > 59) return null;
       return { speaker: m[1].trim(), ms: ((hours * 60 + mins) * 60 + secs) * 1000 };
     }
+    m = /^(.*?)\s+(\d+)\s*(?:h|ura)\s+(\d+)\s*s\s*$/i.exec(s);
+    if (m) {
+      const secs = +m[3];
+      if (secs > 59) return null;
+      return { speaker: m[1].trim(), ms: (+m[2] * 3600 + secs) * 1000 };
+    }
     m = /^(.*?)\s+(\d+)\s*min\s+(\d+)\s*s\s*$/i.exec(s);
     if (m) {
       const secs = +m[3];
       if (secs > 59) return null;
       return { speaker: m[1].trim(), ms: (+m[2] * 60 + secs) * 1000 };
+    }
+    m = /^(.*?)\s+(\d+)\s*min\s*$/i.exec(s);
+    if (m) {
+      const speaker = m[1].trim();
+      // Ne požri nepreverjenih oblik tipa "… 2 ure 3 min" (množina / tuje enote).
+      if (/\d+\s+\S+$/i.test(speaker)) return null;
+      return { speaker, ms: (+m[2] * 60) * 1000 };
     }
     m = /^(.*?)\s+(\d+)\s*s\s*$/i.exec(s);
     if (m) return { speaker: m[1].trim(), ms: (+m[2]) * 1000 };

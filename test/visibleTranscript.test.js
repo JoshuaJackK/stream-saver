@@ -38,6 +38,11 @@ test('parseVisibleTime / parseAriaLabel', () => {
   assert.deepEqual(V.parseAriaLabel('Speaker 2 h 3 min 4 s'), { speaker: 'Speaker', ms: ((2 * 60 + 3) * 60 + 4) * 1000 });
   assert.deepEqual(V.parseAriaLabel('Speaker 97 min 51 s'), { speaker: 'Speaker', ms: (97 * 60 + 51) * 1000 });
   assert.deepEqual(V.parseAriaLabel('Speaker 12 s'), { speaker: 'Speaker', ms: 12000 });
+  assert.deepEqual(V.parseAriaLabel('Speaker 16 min'), { speaker: 'Speaker', ms: 960000 });
+  assert.deepEqual(V.parseAriaLabel('dr. Andreja Poljanec 16 min'), { speaker: 'dr. Andreja Poljanec', ms: 960000 });
+  assert.deepEqual(V.parseAriaLabel('Speaker 0 min'), { speaker: 'Speaker', ms: 0 });
+  assert.deepEqual(V.parseAriaLabel('Speaker 1 ura 12 s'), { speaker: 'Speaker', ms: 3612000 });
+  assert.deepEqual(V.parseAriaLabel('Speaker 1 h 12 s'), { speaker: 'Speaker', ms: 3612000 });
   assert.equal(V.parseAriaLabel('Speaker 2 ure 3 min'), null); // množina "ure" ni preverjena
   assert.equal(V.parseAriaLabel('Speaker 2 h'), null); // brez minut
   assert.equal(V.parseAriaLabel('Speaker 1 ura 70 min'), null); // minute > 59
@@ -300,19 +305,24 @@ test('collect: virtualizacija s 5-vrstično luknjo – sidro dopolni, ne izmisli
 test('assemble: preverjene ura/h oblike dajo popoln TXT', () => {
   const labels = [
     ['Speaker 0 min 7 s', 7000],
+    ['Speaker 16 min', 960000],
+    ['dr. Andreja Poljanec 16 min', 960000],
+    ['Speaker 1 ura 12 s', 3612000],
     ['Speaker 1 ura 12 min', 4320000],
     ['Speaker 3 h 45 min', 13500000]
   ];
   const map = new Map();
+  const total = labels.length;
   labels.forEach(([aria, ms], i) => {
     const p = V.parseAriaLabel(aria);
     assert.ok(p, aria);
     assert.equal(p.ms, ms);
-    map.set(i, { index: i, text: 't' + i, speaker: p.speaker, timeMs: p.ms, setSize: 3, ariaLabel: aria });
+    map.set(i, { index: i, text: 't' + i, speaker: p.speaker, timeMs: p.ms, setSize: total, ariaLabel: aria });
   });
-  const parsed = V.assembleParsed(map, 3);
-  assert.equal(parsed.stats.lines, 3);
+  const parsed = V.assembleParsed(map, total);
+  assert.equal(parsed.stats.lines, total);
   assert.match(T.toTxt(parsed), /Speaker: t0/);
+  assert.match(T.toTxt(parsed), /dr\. Andreja Poljanec: t2/);
   assert.match(T.toVtt(parsed), /WEBVTT/);
 });
 
