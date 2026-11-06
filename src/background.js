@@ -302,7 +302,8 @@ async function saveVisibleTranscriptFile(tabId, parsed, opts) {
   const name = SSMpd.sanitizeFilename(opts.filename || baseTitle(tabId, s, tab));
   const sub = SSMpd.sanitizeSubfolder(opts.subfolder || '');
   const filename = (sub ? sub + '/' : '') + name + f.ext;
-  const content = fmt === 'vtt' ? SSTranscript.toVtt(parsed) : SSTranscript.toTxt(parsed);
+  const meta = transcriptExportMeta(s, tab);
+  const content = fmt === 'vtt' ? SSTranscript.toVtt(parsed, meta) : SSTranscript.toTxt(parsed, meta);
   const blob = new Blob([content], { type: f.mime });
   const url = URL.createObjectURL(blob);
   let downloadId;
@@ -400,7 +401,8 @@ async function saveTranscript(tabId, opts) {
   const name = SSMpd.sanitizeFilename(opts.filename || baseTitle(tabId, s, tab));
   const sub = SSMpd.sanitizeSubfolder(opts.subfolder || '');
   const filename = (sub ? sub + '/' : '') + name + f.ext;
-  const content = fmt === 'vtt' ? SSTranscript.toVtt(t.parsed) : SSTranscript.toTxt(t.parsed);
+  const meta = transcriptExportMeta(s, tab);
+  const content = fmt === 'vtt' ? SSTranscript.toVtt(t.parsed, meta) : SSTranscript.toTxt(t.parsed, meta);
   const blob = new Blob([content], { type: f.mime });
   const url = URL.createObjectURL(blob);
   let downloadId;
@@ -462,6 +464,15 @@ function makeFetcher(tabId, s) {
 function baseTitle(tabId, s, tab) {
   const fromPage = s.page && s.page.fileName;
   return SSMpd.sanitizeFilename(fromPage || SSMpd.titleFromTab(tab && tab.title) || 'posnetek');
+}
+
+/** Naslov/Source za glavo datoteke: berljiv fileName strani (nesanitiziran) ali očiščen tab.title; Source = tab.url. */
+function transcriptExportMeta(s, tab) {
+  const title = (s && s.page && s.page.fileName)
+    || SSMpd.titleFromTab(tab && tab.title)
+    || 'posnetek';
+  const source = (tab && tab.url) || null;
+  return { title, source };
 }
 
 function hasTranscodeAudio(s) {

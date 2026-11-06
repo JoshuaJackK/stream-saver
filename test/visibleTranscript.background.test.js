@@ -62,8 +62,12 @@ test('ss-save-visible-transcript: job v ozadju, napredek, shranjevanje, trajno s
   assert.equal(st.visibleJob.status, 'done', st.visibleJob && st.visibleJob.message);
   assert.match(st.visibleJob.message, /Moje\.txt/);
   assert.equal(downloads[0].filename, 'Moje.txt');
-  const text = await blobs[0].text();
+  const bytes = Buffer.from(await blobs[0].arrayBuffer());
+  assert.deepEqual([...bytes.subarray(0, 3)], [0xef, 0xbb, 0xbf]);
+  const text = bytes.toString('utf8');
   assert.match(text, /Ana: Pozdravljeni/);
+  assert.match(text, /^\uFEFFTest\.mp4\r\nSource: https:\/\/fake-my\.sharepoint\.com\/x\r\n\r\n/);
+  assert.ok(!text.includes('Format:'));
 });
 
 function loadBg(browserExtras) {

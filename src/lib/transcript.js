@@ -111,8 +111,19 @@
 
   const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-  /** WebVTT: ena replika na vrstico prepisa, govorec kot <v Ime>…</v>, brez združevanja. */
-  function toVtt(parsed) {
+  /**
+   * Glava datoteke: naslov + Source. Brez meta → null (ohranjen stari izpis).
+   * Source: samo dejanski tab.url (nikoli manifest/transcode); manjkajoč → "(ni na voljo)".
+   */
+  function headerLines(meta) {
+    if (meta == null) return null;
+    const title = (meta.title != null && String(meta.title).trim()) ? String(meta.title).trim() : 'posnetek';
+    const source = (meta.source != null && String(meta.source).trim()) ? String(meta.source).trim() : '(ni na voljo)';
+    return [title, 'Source: ' + source];
+  }
+
+  /** WebVTT: ena replika na vrstico prepisa, govorec kot <v Ime>…</v>, brez združevanja. Opcijski meta → NOTE (naslov + Source) po WEBVTT. */
+  function toVtt(parsed, meta) {
     const cues = parsed.entries.map((e) => {
       if (e.systemEvent) {
         const note = fixEncoding(e.text).replace(/\n/g, ' ');
@@ -122,17 +133,23 @@
       const line = e.speaker ? `<v ${esc(fixEncoding(e.speaker))}>${body}</v>` : body;
       return `${formatVttTime(e.startMs)} --> ${formatVttTime(e.endMs)}\n${line}`;
     });
-    return 'WEBVTT\n\n' + cues.join('\n\n') + (cues.length ? '\n' : '');
+    const body = cues.join('\n\n') + (cues.length ? '\n' : '');
+    const hdr = headerLines(meta);
+    if (!hdr) return 'WEBVTT\n\n' + body;
+    return 'WEBVTT\n\nNOTE\n' + hdr.join('\n') + '\n\n' + body;
   }
 
-  /** Berljivo besedilo: ena vrstica na vrstico prepisa, `[H:MM:SS] Ime: besedilo`; UTF-8 z BOM (Beležnica), konci vrstic CRLF. */
-  function toTxt(parsed) {
+  /** Berljivo besedilo: UTF-8 z BOM, CRLF; opcijski meta → naslov + Source, prazna vrstica, telo. */
+  function toTxt(parsed, meta) {
     const lines = parsed.entries.map((e) => {
       const body = fixEncoding(e.text).replace(/\n/g, ' ');
       if (e.systemEvent) return `[brez časa] Sistemski dogodek: ${body}`;
       return `[${formatTxtTime(e.startMs)}] ${e.speaker ? fixEncoding(e.speaker) + ': ' : ''}${body}`;
     });
-    return '\uFEFF' + lines.join('\r\n') + (lines.length ? '\r\n' : '');
+    const body = lines.join('\r\n') + (lines.length ? '\r\n' : '');
+    const hdr = headerLines(meta);
+    if (!hdr) return '\uFEFF' + body;
+    return '\uFEFF' + hdr.join('\r\n') + '\r\n\r\n' + body;
   }
 
   /** Slovenski samostalnik v pravi obliki: forms = [ednina, dvojina, množina(3–4), množina(5+)] */

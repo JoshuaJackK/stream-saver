@@ -150,3 +150,42 @@ test('popravek kodiranja: èe/Èe/èetudi/ëe → če/Če/četudi/že v TXT in V
   assert.equal(T.toTxt(p), '\uFEFF[0:00:01] Žiga Čuk: Če danes, četudi, že no. Šum & žuželke.\r\n');
   assert.equal(T.toVtt(p), 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n<v Žiga Čuk>Če danes, četudi, že no. Šum &amp; žuželke.</v>\n');
 });
+
+
+test('toTxt/toVtt: brez meta ohrani stari izpis; z meta naslov + Source', () => {
+  const p = T.parseTranscript(JSON.stringify({ entries: [
+    { text: 'Pozdrav', speakerDisplayName: 'Ana', speakerId: 'a', startOffset: '00:00:01.0000000', endOffset: '00:00:02.0000000', spokenLanguageTag: 'sl-si' },
+    { text: 'Konec', speakerDisplayName: 'Ana', speakerId: 'a', startOffset: '00:00:03.0000000', endOffset: '00:00:04.0000000', spokenLanguageTag: 'sl-si' }
+  ] }));
+  assert.equal(p.entries.length, 2);
+  assert.equal(T.toTxt(p), '\uFEFF[0:00:01] Ana: Pozdrav\r\n[0:00:03] Ana: Konec\r\n');
+  assert.equal(T.toVtt(p).startsWith('WEBVTT\n\n00:00:01.000'), true);
+
+  const meta = {
+    title: 'Razvojna psihologija 1 - Seminarske vaje.mp4',
+    source: 'https://eucilnica.almamater.si/mod/url/view.php?id=93096'
+  };
+  const txt = T.toTxt(p, meta);
+  assert.equal(txt.charCodeAt(0), 0xfeff);
+  assert.equal(txt, '\uFEFFRazvojna psihologija 1 - Seminarske vaje.mp4\r\n'
+    + 'Source: https://eucilnica.almamater.si/mod/url/view.php?id=93096\r\n\r\n'
+    + '[0:00:01] Ana: Pozdrav\r\n[0:00:03] Ana: Konec\r\n');
+  assert.ok(!txt.includes('Format:'));
+  assert.ok(!txt.includes('exported by Stream Saver'));
+
+  const vtt = T.toVtt(p, meta);
+  assert.equal(vtt, 'WEBVTT\n\nNOTE\n'
+    + 'Razvojna psihologija 1 - Seminarske vaje.mp4\n'
+    + 'Source: https://eucilnica.almamater.si/mod/url/view.php?id=93096\n\n'
+    + '00:00:01.000 --> 00:00:02.000\n<v Ana>Pozdrav</v>\n\n'
+    + '00:00:03.000 --> 00:00:04.000\n<v Ana>Konec</v>\n');
+  assert.ok(!vtt.includes('Format:'));
+});
+
+test('toTxt/toVtt: manjkajoč Source → (ni na voljo)', () => {
+  const empty = T.parseTranscript('{"entries":[]}');
+  assert.equal(T.toTxt(empty, { title: 'X', source: null }),
+    '\uFEFFX\r\nSource: (ni na voljo)\r\n\r\n');
+  assert.equal(T.toVtt(empty, { title: 'X' }),
+    'WEBVTT\n\nNOTE\nX\nSource: (ni na voljo)\n\n');
+});

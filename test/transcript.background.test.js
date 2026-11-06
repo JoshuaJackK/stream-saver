@@ -105,13 +105,21 @@ test('shranjevanje .txt in .vtt: ime, podmapa, BOM, preklic URL-jev', async () =
   assert.equal(t.downloads[0].saveAs, false);
   const bytes = Buffer.from(await t.blobs[0].arrayBuffer());
   assert.deepEqual([...bytes.subarray(0, 3)], [0xef, 0xbb, 0xbf]);
-  assert.ok(bytes.toString('utf8').includes('[0:00:07] Ana Novak: Dobrodošli'));
+  const txt = bytes.toString('utf8');
+  assert.ok(txt.includes('[0:00:07] Ana Novak: Dobrodošli'));
+  assert.match(txt, /^\uFEFFIzmišljeno predavanje\.mp4\r\nSource: https:\/\/fake-my\.sharepoint\.com\/personal\/u_fake\/_layouts\/15\/stream\.aspx\?id=a\r\n\r\n/);
+  assert.ok(!txt.includes('Format:'));
+  assert.ok(!txt.includes('northeurope1-mediap.svc.ms'), 'Source ni manifest/transcode URL');
 
   r = await t.listeners.msg({ type: 'ss-save-transcript', tabId: 5, options: { filename: 'Moje ime', subfolder: '', format: 'vtt', saveAs: true } }, {});
   assert.equal(r.filename, 'Moje ime.vtt');
   assert.equal(t.downloads[1].saveAs, true);
   const vtt = await t.blobs[1].text();
-  assert.ok(vtt.startsWith('WEBVTT\n\n00:00:07.117 --> 00:00:13.930\n<v Ana Novak>'));
+  assert.ok(vtt.startsWith('WEBVTT\n\nNOTE\n'));
+  assert.match(vtt, /Source: https:\/\/fake-my\.sharepoint\.com\/personal\/u_fake\/_layouts\/15\/stream\.aspx\?id=a/);
+  assert.ok(!vtt.includes('Format:'));
+  assert.match(vtt, /^WEBVTT\n\nNOTE\nIzmišljeno predavanje\.mp4\nSource:/);
+  assert.ok(vtt.includes('00:00:07.117 --> 00:00:13.930\n<v Ana Novak>'));
 
   // URL-ji se prekličejo, ko se prenos konča
   t.listeners.dl({ id: 1, state: { current: 'complete' } });
