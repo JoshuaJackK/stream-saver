@@ -24,12 +24,19 @@ function saveSettings() {
 function showMain(on) {
   $('common').hidden = !on; $('form').hidden = !on; $('transcript').hidden = !on;
 }
-function renderTranscript(tr, usable) {
+function visibleAvailable(s) {
+  return !!(s && s.visiblePane && s.visiblePane.available);
+}
+function renderTranscript(tr, usable, s) {
   const st = $('trStatus');
   st.textContent = tr.text || '';
   st.className = 'status small ' + (tr.level || '');
   $('trFormat').disabled = trSaving;
+  const vis = visibleAvailable(s);
   $('trSave').disabled = trSaving || !usable;
+  $('trSave').hidden = !usable && vis;
+  $('trVisible').hidden = !(vis && !usable);
+  $('trVisible').disabled = trSaving;
 }
 
 function render() {
@@ -39,10 +46,11 @@ function render() {
   const tr = s.transcript || { state: 'none', level: 'warn', text: '' };
   const trUsable = tr.state === 'ready' || tr.state === 'loading' || tr.state === 'error';
   PopupGen.hide();
-  if (!s.detected && !(job && job.status) && PopupGen.render(trUsable)) { $('fallback').hidden = true; $('transcript').hidden = true; return; }
+  if (!s.detected && !(job && job.status) && !visibleAvailable(s) && PopupGen.render(trUsable)) { $('fallback').hidden = true; $('transcript').hidden = true; return; }
+  if (!s.detected && visibleAvailable(s) && !(job && job.status)) { showMain(true); $('form').hidden = true; $('fallback').hidden = true; $('transcript').hidden = false; }
   $('fallback').hidden = !s.detected;
-  if ((s.detected || trUsable) && !filled) { $('filename').value = s.title || 'posnetek'; filled = true; }
-  renderTranscript(tr, trUsable);
+  if ((s.detected || trUsable || visibleAvailable(s)) && !filled) { $('filename').value = s.title || 'posnetek'; filled = true; }
+  renderTranscript(tr, trUsable, s);
   if (job && job.status === 'running') {
     showMain(false); $('progress').hidden = false; $('cancel').hidden = false; $('again').hidden = true;
     const pct = job.total ? (job.done / job.total) * 100 : 0;
@@ -119,6 +127,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     $('start').disabled = false;
     refresh();
   });
+  
+  $('trVisible').addEventListener('click', async () => {
+    await saveSettings();
+    trSaving = true; $('trVisible').disabled = true; $('trSave').disabled = true;
+    $('trMsg').textContent = 'Berem viden prepis (lahko traja do ~90 s) …';
+    try {
+      const r = await browser.runtime.sendMessage({ type: 'ss-save-visible-transcript', tabId, options: {
+        filename: SSMpd.sanitizeFilename($('filename').value), subfolder: $('subfolder').value,
+        format: $('trFormat').value, saveAs: $('saveAs').checked
+      } });
+      if (r && r.ok) {
+        $('trMsg').textContent = `Shranjeno kot: ${r.filename} (${r.lines} vrstic). Datoteko najdeš med prenosi v Firefoxu (Ctrl+Shift+Y).`;
+      } else {
+        $('trMsg').textContent = 'Napaka: ' + ((r && r.error) || 'neznana napaka');
+      }
+    } catch (e) {
+      $('trMsg').textContent = 'Napaka: ' + e.message;
+    }
+    trSaving = false;
+    refresh();
+  });
+
   $('trSave').addEventListener('click', async () => {
     await saveSettings();
     trSaving = true; $('trSave').disabled = true; $('trMsg').textContent = 'Shranjujem prepis …';

@@ -207,21 +207,21 @@ zato je pot vedno sestavljena iz Firefoxove mape za prenose in podmape iz razši
 
 ## 5. Samo prepis (Prepis)
 
-Od različice 1.1.0 lahko posnetku **ločeno od videa** shraniš samo prepis govora (zavihek **Prepis** v predvajalniku Stream). To je ločena možnost: deluje tudi, če video še ni zaznan (npr. predvajanje še ni steklo) – dovolj je, da predvajalnik prepis prikazuje oz. ga je naložil.
+Od različice 1.1.0 (omrežje) oz. **1.2.1** (tudi viden DOM) lahko posnetku **ločeno od videa** shraniš samo prepis govora (zavihek **Prepis** v predvajalniku Stream). To je ločena možnost: deluje tudi, če video še ni zaznan (npr. predvajanje še ni steklo) – dovolj je, da predvajalnik prepis prikazuje oz. ga je naložil.
 
 ### Kaj razširitev naredi in česa ne
 
-- Razširitev shrani **samo tisto, kar predvajalnik že sam prejme** za prikaz prepisa: ob nalaganju strani predvajalnik s tvojo prijavo prebere prepis (zahteva `…/media/transcripts/<id>/streamContent?format=json…`). Razširitev to zahtevo zazna in **isti naslov** z istimi parametri in tvojimi piškotki prebere še enkrat. Drugih naslovov ne kliče.
-- **Ne** uporablja nobene povezave za prenos (npr. `format=vtt`, `docx`, gumb **Prenesi** v zavihku Prepis) in **ne zaobide** onemogočenega gumba **Prenesi**. Če predvajalnik prepisa ne prikaže, ga razširitev ne more shraniti.
+- **Omrežni način (starejši Stream):** shrani samo tisto, kar predvajalnik sam naloži za prikaz (`…/media/transcripts/<id>/streamContent?format=json…`). Razširitev **isti naslov** z istimi parametri in tvojimi piškotki prebere še enkrat.
+- **Viden prepis (novi Stream, od 1.2.1):** če omrežni JSON ni na voljo (ali ni berljiv), lahko ob **tvojem kliku** na **Preberi viden prepis** razširitev prebere besedilo, ki ga **že vidiš** v odprtem zavihku Prepis (samo `textContent` vrstic, brez `src`/`innerHTML`). Ne kliče gumba Prenesi, `format=vtt`/`docx` ali drugih prenostnih povezav in **ne dešifrira** morebitnih neberljivih omrežnih odgovorov.
+- Delnega prepisa ne shrani: če ne uspe prebrati vseh vrstic, javi napako.
 - Deluje samo za posnetke, ki jih lahko sam gledaš, in samo za tvojo osebno uporabo. Ne deli prepisov naprej.
-- Prepis, ki mu lastnik posnetka onemogoči prenos (gumb **Prenesi** je siv), se v predvajalniku vseeno prikaže; razširitev ga shrani samo toliko, kolikor ga predvajalnik prejme za prikaz. Če meniš, da lastnik tega ne želi, prepisa ne shranjuj.
 
 ### Kako ga shraniš
 
-1. Odpri posnetek v Streamu (ali v Teams) in **počakaj, da se stran naloži**. Prepis predvajalnik naloži sam ob nalaganju strani – zavihka Prepis ni treba odpreti.
-2. Odpri okno razširitve (ikona v orodni vrstici) ali plavajoči gumb na strani (**Prenesi posnetek** oz. **Shrani prepis**, če video še ni zaznan). V razdelku **Prepis** mora pisati npr. *»Prepis zaznan: 1214 vrstic, 12 govorcev, jezik sl-si«* (številke so izračunane iz prejetih podatkov).
-3. Preveri **Ime datoteke** in **Podmapo (predmet)**. Uporabljata se enako kot pri videu (isto ime, ista podmapa v mapi za prenose, enaka možnost *Vprašaj, kam naj shranim*); razlikuje se samo končnica.
-4. Izberi **Obliko prepisa** in klikni **Shrani prepis**. Izbrana oblika se zapomni.
+1. Odpri posnetek v Streamu (ali v Teams).
+2. **Omrežni način:** če v oknu razširitve piše *»Prepis zaznan: …«*, izberi obliko in klikni **Shrani prepis**.
+3. **Viden prepis:** odpri zavihek **Prepis** v predvajalniku. Ko razširitev zazna viden seznam, se prikaže gumb **Preberi viden prepis**. Klikni ga (lahko traja do ~90 s, medtem se seznam pomika; video se ne predvaja namerno). Če uspe, shrani **celoten** prepis; sicer napaka z manjkajočimi indeksi.
+4. Preveri **Ime datoteke** in **Podmapo**. Oblika `.txt` / `.vtt` je enaka kot pri omrežnem načinu.
 
 ### Obliki
 
@@ -238,14 +238,14 @@ V obeh oblikah: vrstice z praznim besedilom se izpustijo, nič se ne združuje (
 
 | Sporočilo | Pomen / kaj narediti |
 | --- | --- |
-| *»Prepis še ni naložen – osveži stran (F5), da ga predvajalnik znova naloži.«* | Prepis predvajalnik naloži ob nalaganju strani. Če si stran odprl, preden je razširitev tekla (ali si razširitev šele namestil/osvežil), je razširitev zahteve ni videla. Pritisni **F5**; v Teams osveži posnetek/zavihek. Če se po osvežitvi še vedno ne pojavi, posnetek verjetno nima prepisa. |
+| *»Prepis še ni naložen prek omrežja …«* | Omrežni JSON ni zaznan. Odpri zavihek **Prepis** in uporabi **Preberi viden prepis**, ali osveži (F5). |
 | *»Ta posnetek nima prepisa (prepis je prazen).«* | Predvajalnik je prejel prepis brez vrstic. |
 | *»Prepisa ni bilo mogoče prebrati (HTTP …) …«* | Prijava je potekla ali strežnik odgovarja z napako: osveži stran (F5) in poskusi znova. |
 
 ### Omejitve prepisa
 
 - **Ni preizkušeno na živem Streamu** (različica 1.1.0 je bila preverjena le s samodejnimi testi na izmišljenih podatkih). Če kaj ne deluje, napiši, kaj piše v oknu razširitve.
-- Deluje samo z zahtevo `format=json`, ki jo predvajalnik naredi sam; če Microsoft naslov ali obliko spremeni, razširitev prepisa ne zazna.
+- Omrežni način deluje samo z zahtevo `streamContent?format=json`, ki jo predvajalnik naredi sam. Viden prepis zahteva odprt zavihek Prepis in uspešno prebrati **vse** vrstice (virtualni seznam).
 - Shrani se prepis, ki ga je predvajalnik naložil (privzeti jezik prepisa); drugih jezikov ni mogoče izbrati.
 - Če se po osvežitvi (F5) prepis ne pojavi, prepisa ne poskušaj dobiti z drugimi povezavami – razširitev tega namenoma ne podpira.
 - Hitro preklapljanje med posnetki brez nalaganja strani (v Streamu): razširitev ob spremembi naslova (po nekaj sekundah) ali novem prepisu prepis prejšnjega posnetka zavrže; preden shraniš, preveri v oknu, da se število vrstic ujema s pričakovanim, po potrebi pritisni F5.

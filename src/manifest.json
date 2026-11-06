@@ -54,6 +54,7 @@
       "lib/detect.js",
       "lib/sink.js",
       "lib/transcript.js",
+      "lib/visibleTranscript.js",
       "background-generic.js",
       "background.js"
     ],
@@ -69,6 +70,7 @@
         "*://*.cloud.microsoft/*"
       ],
       "js": [
+        "lib/visibleTranscript.js",
         "content.js"
       ],
       "run_at": "document_idle",

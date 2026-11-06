@@ -221,6 +221,7 @@
         </div>
         <div class="actions">
           <button type="button" id="trSave">Shrani prepis</button>
+          <button type="button" id="trVisible" hidden>Preberi viden prepis</button>
         </div>
       </div>
       <div class="status" id="trMsg"></div>
@@ -253,6 +254,7 @@
       vid: shadow.getElementById('vid'),
       trFmt: shadow.getElementById('ss-trfmt'),
       trSave: shadow.getElementById('trSave'),
+      trVisible: shadow.getElementById('trVisible'),
       trStatus: shadow.getElementById('trStatus'),
       trMsg: shadow.getElementById('trMsg')
     };
@@ -260,6 +262,7 @@
     els.close.addEventListener('click', () => { panelOpen = false; els.panel.hidden = true; });
     els.start.addEventListener('click', startDownload);
     els.trSave.addEventListener('click', saveTranscript);
+    els.trVisible.addEventListener('click', saveVisibleTranscript);
     els.trFmt.addEventListener('change', () => { browser.storage.local.set({ trFormat: els.trFmt.value }).catch(() => {}); });
     els.cancel.addEventListener('click', () => browser.runtime.sendMessage({ type: 'ss-cancel' }).catch(() => {}));
     els.again.addEventListener('click', () => browser.runtime.sendMessage({ type: 'ss-reset' }).then(refresh).catch(() => {}));
@@ -285,11 +288,49 @@
     return !!(t && (t.state === 'ready' || t.state === 'loading' || t.state === 'error'));
   }
 
+  function visibleAvailable(s) {
+    return !!(s && s.visiblePane && s.visiblePane.available);
+  }
   function renderTranscript(s) {
     const t = (s && s.transcript) || { state: 'none', text: '' };
     els.trStatus.textContent = t.text || '';
     els.trStatus.className = 'status' + (t.level ? ' ' + t.level : '');
-    els.trSave.disabled = trSaving || !trUsable(s);
+    const net = trUsable(s);
+    const vis = visibleAvailable(s);
+    els.trSave.disabled = trSaving || !net;
+    els.trSave.hidden = !net && vis;
+    els.trVisible.hidden = !(vis && !net);
+    els.trVisible.disabled = trSaving;
+  }
+
+
+  async function saveVisibleTranscript() {
+    if (trSaving) return;
+    const filename = (els.fn.value || '').trim() || (uiState && uiState.title) || 'posnetek';
+    const subfolder = (els.sub.value || '').trim();
+    const format = els.trFmt.value === 'vtt' ? 'vtt' : 'txt';
+    els.fn.dataset.auto = '0';
+    trSaving = true;
+    els.trVisible.disabled = true;
+    els.trSave.disabled = true;
+    els.trMsg.className = 'status';
+    els.trMsg.textContent = 'Berem viden prepis (lahko traja do ~90 s) …';
+    try { await browser.storage.local.set({ subfolder, trFormat: format }); } catch (e) { /* ignore */ }
+    try {
+      const r = await browser.runtime.sendMessage({ type: 'ss-save-visible-transcript', options: { filename, subfolder, format, saveAs: false } });
+      if (r && r.ok) {
+        els.trMsg.className = 'status ok';
+        els.trMsg.textContent = `Shranjeno kot: ${r.filename} (${r.lines} vrstic). Datoteka je med prenosi v Firefoxu (Ctrl+Shift+Y).`;
+      } else {
+        els.trMsg.className = 'status err';
+        els.trMsg.textContent = 'Napaka: ' + ((r && r.error) || 'neznana napaka');
+      }
+    } catch (e) {
+      els.trMsg.className = 'status err';
+      els.trMsg.textContent = 'Napaka: ' + (e && e.message || e);
+    }
+    trSaving = false;
+    refresh();
   }
 
   async function saveTranscript() {
@@ -327,7 +368,7 @@
     const s = uiState;
     const job = s && s.job;
     const videoDetected = !!(s && s.detected) || localDetected || !!(s && s.hasKey);
-    const detected = videoDetected || trUsable(s);
+    const detected = videoDetected || trUsable(s) || visibleAvailable(s);
     const busy = !!(job && job.status === 'running');
     host.style.display = (detected || busy) ? '' : 'none';
     if (!detected && !busy) return;
@@ -453,9 +494,28 @@
     }
     if (msg.type === 'ss-update') {
       uiState = msg.state;
-      if (uiState && (uiState.detected || uiState.hasKey || trUsable(uiState) || (uiState.job && uiState.job.status === 'running') || localDetected)) ensureUi();
+      if (uiState && (uiState.detected || uiState.hasKey || trUsable(uiState) || visibleAvailable(uiState) || (uiState.job && uiState.job.status === 'running') || localDetected)) ensureUi();
       render();
       return Promise.resolve(true);
+    }
+    if (msg.type === 'ss-collect-visible-transcript') {
+      return (async () => {
+        try {
+          if (typeof SSVisibleTranscript === 'undefined') return { ok: false, error: 'Modul za viden prepis ni naložen.' };
+          const parsed = await SSVisibleTranscript.collectVisibleTranscript(document, { timeoutMs: msg.timeoutMs || 90000 });
+          return { ok: true, parsed };
+        } catch (e) {
+          return { ok: false, error: (e && e.message) || String(e) };
+        }
+      })();
+    }
+    if (msg.type === 'ss-probe-visible-transcript') {
+      try {
+        if (typeof SSVisibleTranscript === 'undefined') return Promise.resolve({ available: false });
+        return Promise.resolve(SSVisibleTranscript.probeVisiblePane(document));
+      } catch (e) {
+        return Promise.resolve({ available: false, error: String(e && e.message || e) });
+      }
     }
     return undefined;
   });
@@ -469,4 +529,21 @@
   } else {
     refresh();
   }
+
+  // Občasno sporoči ozadju, ali je zavihek Prepis viden (za gumb »Preberi viden prepis«).
+  let lastVisSig = '';
+  function reportVisiblePane() {
+    try {
+      if (typeof SSVisibleTranscript === 'undefined') return;
+      const p = SSVisibleTranscript.probeVisiblePane(document);
+      const sig = p.available ? ('1:' + (p.setSize || 0) + ':' + (p.mounted || 0)) : '0';
+      if (sig === lastVisSig) return;
+      lastVisSig = sig;
+      browser.runtime.sendMessage({ type: 'ss-visible-pane', available: !!p.available, setSize: p.setSize || null }).catch(() => {});
+    } catch (e) { /* ignore */ }
+  }
+  setInterval(reportVisiblePane, 1500);
+  if (document.body) reportVisiblePane();
+  else document.addEventListener('DOMContentLoaded', reportVisiblePane, { once: true });
+
 })();

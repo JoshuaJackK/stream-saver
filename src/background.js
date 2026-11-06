@@ -208,7 +208,7 @@ function loadTranscript(tabId, s) {
 
 function transcriptSummary(t) {
   if (!t) {
-    return { state: 'none', level: 'warn', text: 'Prepis še ni naložen – osveži stran (F5), da ga predvajalnik znova naloži. Če se po osvežitvi ne pojavi, ta posnetek verjetno nima prepisa.' };
+    return { state: 'none', level: 'warn', text: 'Prepis še ni naložen prek omrežja. Če v predvajalniku vidiš zavihek Prepis, ga odpri in uporabi »Preberi viden prepis«. Sicer osveži stran (F5). Če se po tem ne pojavi, posnetek verjetno nima prepisa.' };
   }
   if (t.status === 'loading') return { state: 'loading', level: '', text: 'Prepis zaznan, nalagam …' };
   if (t.status === 'ready') {
@@ -219,6 +219,65 @@ function transcriptSummary(t) {
 }
 
 const TR_FORMATS = { txt: { ext: '.txt', mime: 'text/plain;charset=utf-8' }, vtt: { ext: '.vtt', mime: 'text/vtt;charset=utf-8' } };
+
+
+async function collectVisibleFromFrames(tabId) {
+  const s = tabs.get(tabId);
+  const prefer = s && s.visiblePane && s.visiblePane.frameId;
+  const tryFrame = async (frameId) => {
+    try {
+      const r = await browser.tabs.sendMessage(tabId, { type: 'ss-collect-visible-transcript', timeoutMs: 90000 }, { frameId });
+      return r;
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  };
+  if (typeof prefer === 'number') {
+    const r = await tryFrame(prefer);
+    if (r && r.ok) return r;
+  }
+  // poskusi še okvir 0 in okvir manifesta
+  const candidates = [0];
+  if (s && s.manifest && typeof s.manifest.frameId === 'number') candidates.push(s.manifest.frameId);
+  if (s && s.page && typeof s.page.frameId === 'number') candidates.push(s.page.frameId);
+  let last = { ok: false, error: 'Nobeden okvir ni vrnil prepisa.' };
+  for (const id of [...new Set(candidates)]) {
+    if (id === prefer) continue;
+    const r = await tryFrame(id);
+    if (r && r.ok) return r;
+    if (r && r.error) last = r;
+  }
+  return last;
+}
+
+async function saveVisibleTranscript(tabId, opts) {
+  const s = tabState(tabId);
+  const collected = await collectVisibleFromFrames(tabId);
+  if (!collected || !collected.ok) {
+    throw new Error((collected && collected.error) || 'Vidnega prepisa ni bilo mogoče prebrati.');
+  }
+  const parsed = collected.parsed;
+  if (!parsed || !parsed.entries || !parsed.entries.length) throw new Error('Prepis je prazen.');
+  const fmt = opts.format === 'vtt' ? 'vtt' : 'txt';
+  const f = TR_FORMATS[fmt];
+  const tab = await browser.tabs.get(tabId).catch(() => null);
+  const name = SSMpd.sanitizeFilename(opts.filename || baseTitle(tabId, s, tab));
+  const sub = SSMpd.sanitizeSubfolder(opts.subfolder || '');
+  const filename = (sub ? sub + '/' : '') + name + f.ext;
+  const content = fmt === 'vtt' ? SSTranscript.toVtt(parsed) : SSTranscript.toTxt(parsed);
+  const blob = new Blob([content], { type: f.mime });
+  const url = URL.createObjectURL(blob);
+  let downloadId;
+  try {
+    downloadId = await browser.downloads.download({ url, filename, saveAs: !!opts.saveAs, conflictAction: 'uniquify' });
+  } catch (e) {
+    URL.revokeObjectURL(url);
+    throw new Error('Shranjevanje ni uspelo: ' + e.message);
+  }
+  pendingDownloads.set(downloadId, { url, sink: null });
+  const st = parsed.stats;
+  return { ok: true, filename, format: fmt, lines: st.lines, speakers: st.speakers, skipped: st.skippedBadTime || 0, source: 'visible' };
+}
 
 async function saveTranscript(tabId, opts) {
   const s = tabs.get(tabId);
@@ -530,6 +589,7 @@ function summary(tabId, tab) {
     title,
     manifestUrl: s && s.manifest ? s.manifest.url : null,
     transcript: transcriptSummary(s && s.transcript),
+    visiblePane: s && s.visiblePane ? { available: true, setSize: s.visiblePane.setSize || null, frameId: s.visiblePane.frameId } : { available: false, setSize: null },
     commands: s ? {
       ytdlp: SSMpd.ytDlpCommand(pageUrl, title, true),
       ffmpeg: s.manifest ? SSMpd.ffmpegCommand(s.manifest.url, title, true, s.manifest.spopactoken) : null,
@@ -604,6 +664,18 @@ browser.runtime.onMessage.addListener((msg, sender) => {
     }
     return Promise.resolve(changed);
   }
+
+  if (msg.type === 'ss-visible-pane' && sender.tab) {
+    const tabId = sender.tab.id;
+    const s = tabState(tabId);
+    if (msg.available) {
+      s.visiblePane = { setSize: msg.setSize || null, frameId: sender.frameId, time: Date.now() };
+    } else if (s.visiblePane && s.visiblePane.frameId === sender.frameId) {
+      s.visiblePane = null;
+    }
+    setBadge(tabId);
+    return Promise.resolve(true);
+  }
   if (msg.type === 'ss-state') {
     const tabId = msg.tabId != null ? msg.tabId : (sender.tab && sender.tab.id);
     if (tabId == null) return Promise.resolve(summary(-1, null));
@@ -621,6 +693,10 @@ browser.runtime.onMessage.addListener((msg, sender) => {
   if (msg.type === 'ss-save-transcript') {
     const tabId = msg.tabId != null ? msg.tabId : (sender.tab && sender.tab.id);
     return saveTranscript(tabId, msg.options || {}).catch((e) => ({ ok: false, error: e.message || String(e) }));
+  }
+  if (msg.type === 'ss-save-visible-transcript') {
+    const tabId = msg.tabId != null ? msg.tabId : (sender.tab && sender.tab.id);
+    return saveVisibleTranscript(tabId, msg.options || {}).catch((e) => ({ ok: false, error: e.message || String(e) }));
   }
   if (msg.type === 'ss-cancel') {
     const tabId = msg.tabId != null ? msg.tabId : (sender.tab && sender.tab.id);
