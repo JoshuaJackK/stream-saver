@@ -31,12 +31,25 @@ function renderTranscript(tr, usable, s) {
   const st = $('trStatus');
   st.textContent = tr.text || '';
   st.className = 'status small ' + (tr.level || '');
-  $('trFormat').disabled = trSaving;
   const vis = visibleAvailable(s);
-  $('trSave').disabled = trSaving || !usable;
+  const vj = s && s.visibleJob;
+  const busy = !!(vj && vj.status === 'running') || trSaving;
+  $('trFormat').disabled = busy;
+  $('trSave').disabled = busy || !usable;
   $('trSave').hidden = !usable && vis;
   $('trVisible').hidden = !(vis && !usable);
-  $('trVisible').disabled = trSaving;
+  $('trVisible').disabled = busy;
+  // trajno sporočilo iz ozadja (preživi zaprtje popup-a med drsenjem)
+  if (vj && vj.status === 'running') {
+    $('trMsg').textContent = vj.message || ('Berem viden prepis: ' + (vj.done || 0) + (vj.total != null ? '/' + vj.total : '') + ' …');
+    trSaving = true;
+  } else if (vj && vj.status === 'done') {
+    $('trMsg').textContent = vj.message || '';
+    trSaving = false;
+  } else if (vj && vj.status === 'error') {
+    $('trMsg').textContent = 'Napaka: ' + (vj.message || vj.error || 'neznana napaka');
+    trSaving = false;
+  }
 }
 
 function render() {
@@ -131,21 +144,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('trVisible').addEventListener('click', async () => {
     await saveSettings();
     trSaving = true; $('trVisible').disabled = true; $('trSave').disabled = true;
-    $('trMsg').textContent = 'Berem viden prepis (lahko traja do ~90 s) …';
+    $('trMsg').textContent = 'Berem viden prepis …';
     try {
       const r = await browser.runtime.sendMessage({ type: 'ss-save-visible-transcript', tabId, options: {
         filename: SSMpd.sanitizeFilename($('filename').value), subfolder: $('subfolder').value,
         format: $('trFormat').value, saveAs: $('saveAs').checked
       } });
-      if (r && r.ok) {
-        $('trMsg').textContent = `Shranjeno kot: ${r.filename} (${r.lines} vrstic). Datoteko najdeš med prenosi v Firefoxu (Ctrl+Shift+Y).`;
-      } else {
+      if (!r || !r.ok) {
         $('trMsg').textContent = 'Napaka: ' + ((r && r.error) || 'neznana napaka');
+        trSaving = false;
       }
     } catch (e) {
       $('trMsg').textContent = 'Napaka: ' + e.message;
+      trSaving = false;
     }
-    trSaving = false;
     refresh();
   });
 

@@ -221,13 +221,32 @@ function transcriptSummary(t) {
 const TR_FORMATS = { txt: { ext: '.txt', mime: 'text/plain;charset=utf-8' }, vtt: { ext: '.vtt', mime: 'text/vtt;charset=utf-8' } };
 
 
-async function collectVisibleFromFrames(tabId) {
+
+function visibleJobSummary(j) {
+  if (!j) return null;
+  return {
+    status: j.status,
+    message: j.message || '',
+    done: j.done || 0,
+    total: j.total || null,
+    filename: j.filename || null,
+    lines: j.lines || null,
+    error: j.error || null
+  };
+}
+
+async function collectVisibleFromFrames(tabId, opts) {
+  opts = opts || {};
   const s = tabs.get(tabId);
   const prefer = s && s.visiblePane && s.visiblePane.frameId;
+  const payload = {
+    type: 'ss-collect-visible-transcript',
+    timeoutMs: opts.timeoutMs || 90000,
+    jobId: opts.jobId || null
+  };
   const tryFrame = async (frameId) => {
     try {
-      const r = await browser.tabs.sendMessage(tabId, { type: 'ss-collect-visible-transcript', timeoutMs: 90000 }, { frameId });
-      return r;
+      return await browser.tabs.sendMessage(tabId, payload, { frameId });
     } catch (e) {
       return { ok: false, error: e.message || String(e) };
     }
@@ -236,11 +255,10 @@ async function collectVisibleFromFrames(tabId) {
     const r = await tryFrame(prefer);
     if (r && r.ok) return r;
   }
-  // poskusi še okvir 0 in okvir manifesta
   const candidates = [0];
   if (s && s.manifest && typeof s.manifest.frameId === 'number') candidates.push(s.manifest.frameId);
   if (s && s.page && typeof s.page.frameId === 'number') candidates.push(s.page.frameId);
-  let last = { ok: false, error: 'Nobeden okvir ni vrnil prepisa.' };
+  let last = { ok: false, error: 'Nobeden okvir ni vrnil prepisa. Odpri zavihek Prepis in poskusi znova.' };
   for (const id of [...new Set(candidates)]) {
     if (id === prefer) continue;
     const r = await tryFrame(id);
@@ -250,14 +268,8 @@ async function collectVisibleFromFrames(tabId) {
   return last;
 }
 
-async function saveVisibleTranscript(tabId, opts) {
+async function saveVisibleTranscriptFile(tabId, parsed, opts) {
   const s = tabState(tabId);
-  const collected = await collectVisibleFromFrames(tabId);
-  if (!collected || !collected.ok) {
-    throw new Error((collected && collected.error) || 'Vidnega prepisa ni bilo mogoče prebrati.');
-  }
-  const parsed = collected.parsed;
-  if (!parsed || !parsed.entries || !parsed.entries.length) throw new Error('Prepis je prazen.');
   const fmt = opts.format === 'vtt' ? 'vtt' : 'txt';
   const f = TR_FORMATS[fmt];
   const tab = await browser.tabs.get(tabId).catch(() => null);
@@ -277,6 +289,66 @@ async function saveVisibleTranscript(tabId, opts) {
   pendingDownloads.set(downloadId, { url, sink: null });
   const st = parsed.stats;
   return { ok: true, filename, format: fmt, lines: st.lines, speakers: st.speakers, skipped: st.skippedBadTime || 0, source: 'visible' };
+}
+
+/** Zažene branje v ozadju; rezultat ostane v visibleJob (popup ga vidi tudi po zaprtju). */
+function startVisibleTranscriptJob(tabId, opts) {
+  const s = tabState(tabId);
+  if (s.visibleJob && s.visibleJob.status === 'running') {
+    return Promise.resolve({ ok: false, error: 'Branje vidnega prepisa že poteka. Počakaj ali prekliči.' });
+  }
+  const jobId = Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  s.visibleJob = {
+    status: 'running', message: 'Berem viden prepis …', done: 0, total: null,
+    filename: null, lines: null, error: null, jobId, ctrl, started: Date.now()
+  };
+  setBadge(tabId);
+  (async () => {
+    try {
+      const collected = await collectVisibleFromFrames(tabId, { timeoutMs: 90000, jobId });
+      if (!s.visibleJob || s.visibleJob.jobId !== jobId) return; // preklicano/zamenjano
+      if (!collected || !collected.ok) throw new Error((collected && collected.error) || 'Vidnega prepisa ni bilo mogoče prebrati.');
+      if (ctrl && ctrl.signal.aborted) throw new Error('Prekinjeno.');
+      s.visibleJob.message = 'Shranjujem prepis …';
+      setBadge(tabId);
+      const saved = await saveVisibleTranscriptFile(tabId, collected.parsed, opts || {});
+      if (!s.visibleJob || s.visibleJob.jobId !== jobId) return;
+      s.visibleJob = {
+        status: 'done',
+        message: 'Shranjeno: ' + saved.filename + ' (' + saved.lines + ' vrstic). Datoteka je med prenosi (Ctrl+Shift+Y).',
+        done: saved.lines, total: saved.lines, filename: saved.filename, lines: saved.lines, error: null, jobId
+      };
+    } catch (e) {
+      if (!s.visibleJob || s.visibleJob.jobId !== jobId) return;
+      s.visibleJob = {
+        status: 'error',
+        message: e.message || String(e),
+        done: (s.visibleJob && s.visibleJob.done) || 0,
+        total: (s.visibleJob && s.visibleJob.total) || null,
+        filename: null, lines: null, error: e.message || String(e), jobId
+      };
+    }
+    setBadge(tabId);
+  })();
+  return Promise.resolve({ ok: true, started: true, jobId });
+}
+
+function cancelVisibleTranscriptJob(tabId) {
+  const s = tabs.get(tabId);
+  if (!s || !s.visibleJob) return Promise.resolve(false);
+  const j = s.visibleJob;
+  if (j.ctrl) try { j.ctrl.abort(); } catch (e) { /* */ }
+  // obvesti okvirje
+  const frames = [];
+  if (s.visiblePane && typeof s.visiblePane.frameId === 'number') frames.push(s.visiblePane.frameId);
+  frames.push(0);
+  for (const fid of [...new Set(frames)]) {
+    browser.tabs.sendMessage(tabId, { type: 'ss-cancel-visible-transcript', jobId: j.jobId }, { frameId: fid }).catch(() => {});
+  }
+  s.visibleJob = { status: 'error', message: 'Prekinjeno.', done: j.done || 0, total: j.total, filename: null, lines: null, error: 'Prekinjeno.', jobId: j.jobId };
+  setBadge(tabId);
+  return Promise.resolve(true);
 }
 
 async function saveTranscript(tabId, opts) {
@@ -590,6 +662,7 @@ function summary(tabId, tab) {
     manifestUrl: s && s.manifest ? s.manifest.url : null,
     transcript: transcriptSummary(s && s.transcript),
     visiblePane: s && s.visiblePane ? { available: true, setSize: s.visiblePane.setSize || null, frameId: s.visiblePane.frameId } : { available: false, setSize: null },
+    visibleJob: visibleJobSummary(s && s.visibleJob),
     commands: s ? {
       ytdlp: SSMpd.ytDlpCommand(pageUrl, title, true),
       ffmpeg: s.manifest ? SSMpd.ffmpegCommand(s.manifest.url, title, true, s.manifest.spopactoken) : null,
@@ -696,7 +769,24 @@ browser.runtime.onMessage.addListener((msg, sender) => {
   }
   if (msg.type === 'ss-save-visible-transcript') {
     const tabId = msg.tabId != null ? msg.tabId : (sender.tab && sender.tab.id);
-    return saveVisibleTranscript(tabId, msg.options || {}).catch((e) => ({ ok: false, error: e.message || String(e) }));
+    return startVisibleTranscriptJob(tabId, msg.options || {});
+  }
+  if (msg.type === 'ss-cancel-visible-transcript') {
+    const tabId = msg.tabId != null ? msg.tabId : (sender.tab && sender.tab.id);
+    return cancelVisibleTranscriptJob(tabId);
+  }
+  if (msg.type === 'ss-visible-progress' && sender.tab) {
+    const tabId = sender.tab.id;
+    const s = tabs.get(tabId);
+    if (s && s.visibleJob && s.visibleJob.status === 'running') {
+      if (!msg.jobId || msg.jobId === s.visibleJob.jobId) {
+        if (msg.done != null) s.visibleJob.done = msg.done;
+        if (msg.total != null) s.visibleJob.total = msg.total;
+        if (msg.message) s.visibleJob.message = msg.message;
+        setBadge(tabId);
+      }
+    }
+    return Promise.resolve(true);
   }
   if (msg.type === 'ss-cancel') {
     const tabId = msg.tabId != null ? msg.tabId : (sender.tab && sender.tab.id);

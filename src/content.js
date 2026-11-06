@@ -12,6 +12,7 @@
   const page = window.wrappedJSObject || window;
   let lastSent = '';
   let uiState = null;
+  let visibleCollectCtrl = null;
   let localDetected = false;
   let panelOpen = false;
   let trSaving = false;
@@ -293,14 +294,29 @@
   }
   function renderTranscript(s) {
     const t = (s && s.transcript) || { state: 'none', text: '' };
+    const vj = s && s.visibleJob;
     els.trStatus.textContent = t.text || '';
     els.trStatus.className = 'status' + (t.level ? ' ' + t.level : '');
     const net = trUsable(s);
     const vis = visibleAvailable(s);
-    els.trSave.disabled = trSaving || !net;
+    const busy = !!(vj && vj.status === 'running') || trSaving;
+    els.trSave.disabled = busy || !net;
     els.trSave.hidden = !net && vis;
     els.trVisible.hidden = !(vis && !net);
-    els.trVisible.disabled = trSaving;
+    els.trVisible.disabled = busy;
+    if (vj && vj.status === 'running') {
+      els.trMsg.className = 'status';
+      els.trMsg.textContent = vj.message || ('Berem viden prepis: ' + (vj.done || 0) + (vj.total != null ? '/' + vj.total : '') + ' …');
+      trSaving = true;
+    } else if (vj && vj.status === 'done') {
+      els.trMsg.className = 'status ok';
+      els.trMsg.textContent = vj.message || '';
+      trSaving = false;
+    } else if (vj && vj.status === 'error') {
+      els.trMsg.className = 'status err';
+      els.trMsg.textContent = vj.message || vj.error || 'Napaka';
+      trSaving = false;
+    }
   }
 
 
@@ -314,22 +330,21 @@
     els.trVisible.disabled = true;
     els.trSave.disabled = true;
     els.trMsg.className = 'status';
-    els.trMsg.textContent = 'Berem viden prepis (lahko traja do ~90 s) …';
+    els.trMsg.textContent = 'Berem viden prepis …';
     try { await browser.storage.local.set({ subfolder, trFormat: format }); } catch (e) { /* ignore */ }
     try {
       const r = await browser.runtime.sendMessage({ type: 'ss-save-visible-transcript', options: { filename, subfolder, format, saveAs: false } });
-      if (r && r.ok) {
-        els.trMsg.className = 'status ok';
-        els.trMsg.textContent = `Shranjeno kot: ${r.filename} (${r.lines} vrstic). Datoteka je med prenosi v Firefoxu (Ctrl+Shift+Y).`;
-      } else {
+      if (!r || !r.ok) {
         els.trMsg.className = 'status err';
         els.trMsg.textContent = 'Napaka: ' + ((r && r.error) || 'neznana napaka');
+        trSaving = false;
       }
+      // sicer stanje vodi visibleJob prek ss-update / refresh
     } catch (e) {
       els.trMsg.className = 'status err';
       els.trMsg.textContent = 'Napaka: ' + (e && e.message || e);
+      trSaving = false;
     }
-    trSaving = false;
     refresh();
   }
 
@@ -502,12 +517,30 @@
       return (async () => {
         try {
           if (typeof SSVisibleTranscript === 'undefined') return { ok: false, error: 'Modul za viden prepis ni naložen.' };
-          const parsed = await SSVisibleTranscript.collectVisibleTranscript(document, { timeoutMs: msg.timeoutMs || 90000 });
+          if (visibleCollectCtrl) { try { visibleCollectCtrl.abort(); } catch (e) {} }
+          visibleCollectCtrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+          const jobId = msg.jobId || null;
+          const parsed = await SSVisibleTranscript.collectVisibleTranscript(document, {
+            timeoutMs: msg.timeoutMs || 90000,
+            signal: visibleCollectCtrl && visibleCollectCtrl.signal,
+            onProgress: (p) => {
+              browser.runtime.sendMessage({
+                type: 'ss-visible-progress', jobId,
+                done: p.done, total: p.total, message: p.message
+              }).catch(() => {});
+            }
+          });
+          visibleCollectCtrl = null;
           return { ok: true, parsed };
         } catch (e) {
+          visibleCollectCtrl = null;
           return { ok: false, error: (e && e.message) || String(e) };
         }
       })();
+    }
+    if (msg.type === 'ss-cancel-visible-transcript') {
+      if (visibleCollectCtrl) { try { visibleCollectCtrl.abort(); } catch (e) {} visibleCollectCtrl = null; }
+      return Promise.resolve(true);
     }
     if (msg.type === 'ss-probe-visible-transcript') {
       try {

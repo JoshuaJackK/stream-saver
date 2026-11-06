@@ -220,7 +220,7 @@ Od različice 1.1.0 (omrežje) oz. **1.2.1** (tudi viden DOM) lahko posnetku **l
 
 1. Odpri posnetek v Streamu (ali v Teams).
 2. **Omrežni način:** če v oknu razširitve piše *»Prepis zaznan: …«*, izberi obliko in klikni **Shrani prepis**.
-3. **Viden prepis:** odpri zavihek **Prepis** v predvajalniku. Ko razširitev zazna viden seznam, se prikaže gumb **Preberi viden prepis**. Klikni ga (lahko traja do ~90 s, medtem se seznam pomika; video se ne predvaja namerno). Če uspe, shrani **celoten** prepis; sicer napaka z manjkajočimi indeksi.
+3. **Viden prepis:** odpri zavihek **Prepis** v predvajalniku. Ko razširitev zazna viden seznam, se prikaže gumb **Preberi viden prepis**. Klikni ga – branje teče v ozadju (napredek v oknu razširitve, tudi če se okno zapre med pomikanjem seznama; do ~90 s). Video se ne predvaja namerno. Shrani se samo **celoten** prepis; sicer jasna napaka (brez delne datoteke).
 4. Preveri **Ime datoteke** in **Podmapo**. Oblika `.txt` / `.vtt` je enaka kot pri omrežnem načinu.
 
 ### Obliki

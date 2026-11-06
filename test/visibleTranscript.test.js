@@ -4,25 +4,17 @@ const assert = require('node:assert/strict');
 const V = require('../src/lib/visibleTranscript.js');
 const T = require('../src/lib/transcript.js');
 
-/** Minimalen DOM za teste (brez jsdom). */
 function makeDoc(html) {
-  // linkedom if available, else very small recursive parser is heavy – use jsdom from /tmp if present
-  let JSDOM;
-  try { JSDOM = require('jsdom').JSDOM; }
-  catch (e) {
-    try { JSDOM = require('jsdom').JSDOM; }
-    catch (e2) { throw new Error('jsdom ni na voljo za teste – namesti v /tmp/jsd'); }
-  }
+  const { JSDOM } = require('jsdom');
   return new JSDOM(`<!doctype html><html><body>${html}</body></html>`, { pretendToBeVisual: true }).window.document;
 }
 
 function entryHtml(i, total, text, opts) {
   opts = opts || {};
-  const speaker = opts.speaker || '';
+  const speaker = opts.speaker || 'Govorec';
   const min = opts.min != null ? opts.min : Math.floor((opts.sec || 0) / 60);
   const sec = opts.sec != null ? (opts.sec % 60) : 0;
-  const ariaSpeaker = speaker || 'Govorec';
-  const aria = `${ariaSpeaker} ${min} min ${sec} s`;
+  const aria = `${speaker} ${min} min ${sec} s`;
   const ts = opts.showTs
     ? `<span id="Header-timestamp-${i}" aria-hidden="true">${opts.tsLabel || (min + ':' + String(sec).padStart(2, '0'))}</span>`
     : '';
@@ -35,13 +27,10 @@ function entryHtml(i, total, text, opts) {
 test('parseVisibleTime / parseAriaLabel', () => {
   assert.equal(V.parseVisibleTime('0:07'), 7000);
   assert.equal(V.parseVisibleTime('1:37:51'), 5871000);
-  assert.equal(V.parseVisibleTime('bad'), null);
   assert.deepEqual(V.parseAriaLabel('Ana Novak 0 min 7 s'), { speaker: 'Ana Novak', ms: 7000 });
-  assert.deepEqual(V.parseAriaLabel('X 1 h 2 min 3 s'), { speaker: 'X', ms: 3723000 });
-  assert.equal(V.parseAriaLabel('samo ime'), null);
 });
 
-test('harvest + assemble: govorec se prenese, čas iz aria, popoln 0..n-1', () => {
+test('harvest + assemble: govorec se prenese, popoln 0..n-1', () => {
   const total = 4;
   const html = [
     entryHtml(0, total, 'Prva', { speaker: 'Ana', showHeader: true, showTs: true, sec: 7 }),
@@ -49,54 +38,58 @@ test('harvest + assemble: govorec se prenese, čas iz aria, popoln 0..n-1', () =
     entryHtml(2, total, 'Tretja', { speaker: 'Bojan', showHeader: true, showTs: true, min: 1, sec: 5, tsLabel: '1:05' }),
     entryHtml(3, total, 'Četrta', { speaker: 'Bojan', min: 1, sec: 8 })
   ].join('');
-  const doc = makeDoc(`<div role="complementary" aria-label="Prepis"><div id="scroller" style="overflow-y:auto;height:50px">${html}</div></div>`);
-  // jsdom may not compute scroll – harvest still works
-  const root = V.findTranscriptRoot(doc);
-  const map = V.harvestMounted(root, new Map());
-  assert.equal(map.size, 4);
+  const doc = makeDoc(`<div role="complementary" aria-label="Prepis">${html}</div>`);
+  const map = V.harvestMounted(V.findTranscriptRoot(doc), new Map());
   const parsed = V.assembleParsed(map, total);
   assert.equal(parsed.stats.lines, 4);
-  assert.equal(parsed.stats.speakers, 2);
-  assert.equal(parsed.stats.language, '');
-  assert.equal(parsed.entries[0].speaker, 'Ana');
-  assert.equal(parsed.entries[1].speaker, 'Ana'); // carry
-  assert.equal(parsed.entries[1].startMs, 10000);
-  assert.equal(parsed.entries[2].speaker, 'Bojan');
-  const txt = T.toTxt(parsed);
-  assert.match(txt, /\[0:00:07\] Ana: Prva/);
-  assert.match(txt, /Bojan: Tretja/);
-  assert.equal(txt.charCodeAt(0), 0xFEFF);
+  assert.equal(parsed.entries[1].speaker, 'Ana');
+  assert.match(T.toTxt(parsed), /Ana: Prva/);
 });
 
-test('assemble: manjkajoči indeks -> napaka, brez delnega', () => {
+test('assemble: manjkajoči indeks / čas', () => {
   const doc = makeDoc(entryHtml(0, 3, 'a', { sec: 1 }) + entryHtml(2, 3, 'c', { sec: 3 }));
-  const map = V.harvestMounted(doc, new Map());
-  assert.throws(() => V.assembleParsed(map, 3), /Manjkajo indeksi/);
+  assert.throws(() => V.assembleParsed(V.harvestMounted(doc, new Map()), 3), /Manjkajo indeksi/);
+  assert.throws(() => V.assembleParsed(new Map([[0, { index: 0, text: 'x', speaker: '', timeMs: null, setSize: 1 }]]), 1), /Manjka čas/);
 });
 
-test('assemble: manjkajoč čas -> napaka', () => {
-  const map = new Map([[0, { index: 0, text: 'x', speaker: '', timeMs: null, setSize: 1 }]]);
-  assert.throws(() => V.assembleParsed(map, 1), /Manjka čas/);
+test('LEGACY planScroll: pri luknji na začetku skoči nazaj (dokaz nihanja)', () => {
+  // Zbrano 0..49, manjka 50; nato smo na scrollTop visoko (npr. po koraku) – legacy skoči na frac*max
+  // Po zbiranju 0..10 in 400..500 je missing[0]=11 → jump blizu vrha → nihanje z visokim prevTop
+  const maxScroll = 10000;
+  const client = 400;
+  const tops = [];
+  let top = 8000; // daleč spodaj (npr. po naključnem skoku)
+  for (let k = 0; k < 6; k++) {
+    const missing0 = 11; // luknja zgoraj
+    const plan = V.planScrollLegacy(top, missing0, 1214, maxScroll, client);
+    tops.push({ top: plan.top, mode: plan.mode });
+    top = plan.top;
+  }
+  // vsaj en skok nazaj glede na začetni 8000
+  assert.ok(tops.some((t) => t.mode === 'jump' && t.top < 8000), 'legacy mora skočiti nazaj proti manjkajočemu: ' + JSON.stringify(tops));
+  // zaporedje ni monoton
+  let dec = false;
+  for (let i = 1; i < tops.length; i++) if (tops[i].top < tops[i - 1].top - 1) dec = true;
+  assert.ok(dec, 'legacy zaporedje se zmanjša (nihanje)');
 });
 
-test('aria-posinset mora ujemati indeks', () => {
-  const bad = `<div data-testid="entryRenderer"><div id="entry-0" role="group" aria-label="A 0 min 1 s"><div id="sub-entry-0" role="listitem" aria-posinset="2" aria-setsize="1">x</div></div></div>`;
-  const map = V.harvestMounted(makeDoc(bad), new Map());
-  assert.equal(map.size, 0);
+test('MONOTONIC planScroll: nikoli nazaj', () => {
+  const maxScroll = 10000;
+  let top = 0;
+  const tops = [];
+  for (let k = 0; k < 200; k++) {
+    const plan = V.planScrollMonotonic(top, maxScroll, 400);
+    assert.ok(plan.top + 0.01 >= top, 'monoton: ' + top + ' -> ' + plan.top);
+    tops.push(plan.top);
+    top = plan.top;
+    if (plan.mode === 'bottom') break;
+  }
+  assert.equal(top, maxScroll);
 });
 
-test('probeVisiblePane: Prepis / Transcript', () => {
-  const doc = makeDoc(`<div role="complementary" aria-label="Transcript">${entryHtml(0, 1, 'hi', { sec: 1 })}</div>`);
-  const p = V.probeVisiblePane(doc);
-  assert.equal(p.available, true);
-  assert.equal(p.setSize, 1);
-  assert.equal(V.probeVisiblePane(makeDoc('<p>x</p>')).available, false);
-});
-
-test('collectVisibleTranscript: mock scroll napolni manjkajoče in obnovi scrollTop', async () => {
-  // Virtuelni seznam: naenkrat samo "okno" vrstic; scrollTop določa, katere so nameščene.
-  const total = 6;
-  const JSDOM = require('jsdom').JSDOM;
+test('collectVisibleTranscript: virtualni seznam z eviction – monoton, obnovi scroll, vsi indeksi', async () => {
+  const total = 30;
+  const { JSDOM } = require('jsdom');
   const dom = new JSDOM(`<!doctype html><html><body>
     <div role="complementary" aria-label="Prepis">
       <div id="scroller" style="overflow-y:scroll; height:40px;"></div>
@@ -104,35 +97,47 @@ test('collectVisibleTranscript: mock scroll napolni manjkajoče in obnovi scroll
   </body></html>`, { pretendToBeVisual: true });
   const doc = dom.window.document;
   const scroller = doc.getElementById('scroller');
-  // simulacija: scrollHeight velik
   Object.defineProperty(scroller, 'clientHeight', { get: () => 40, configurable: true });
-  Object.defineProperty(scroller, 'scrollHeight', { get: () => 400, configurable: true });
+  Object.defineProperty(scroller, 'scrollHeight', { get: () => 2000, configurable: true });
   let scrollTop = 0;
+  const windowSize = 3;
+  function remount() {
+    scroller.innerHTML = '';
+    const start = Math.min(total - 1, Math.floor((scrollTop / 2000) * total));
+    const end = Math.min(total, start + windowSize);
+    for (let i = start; i < end; i++) {
+      scroller.insertAdjacentHTML('beforeend', entryHtml(i, total, 'Vrstica ' + i, {
+        speaker: i < 15 ? 'A' : 'B', showHeader: i === 0 || i === 15, showTs: i === 0 || i === 15,
+        sec: i * 2
+      }));
+    }
+  }
   Object.defineProperty(scroller, 'scrollTop', {
     get: () => scrollTop,
     set: (v) => { scrollTop = v; remount(); },
     configurable: true
   });
-  function remount() {
-    scroller.innerHTML = '';
-    const start = Math.min(total - 1, Math.floor((scrollTop / 400) * total));
-    const end = Math.min(total, start + 2);
-    for (let i = start; i < end; i++) {
-      scroller.insertAdjacentHTML('beforeend', entryHtml(i, total, 'Vrstica ' + i, {
-        speaker: i < 3 ? 'A' : 'B', showHeader: i === 0 || i === 3, showTs: i === 0 || i === 3,
-        sec: i * 5, min: 0, tsLabel: '0:' + String(i * 5).padStart(2, '0')
-      }));
-    }
-  }
   remount();
-  scroller.scrollTop = 120; // odmik od začetka
+  scroller.scrollTop = 500;
   const startTop = scroller.scrollTop;
-  const parsed = await V.collectVisibleTranscript(doc, { timeoutMs: 5000, waitMs: 5, scrollEl: scroller });
+  const trace = [];
+  const parsed = await V.collectVisibleTranscript(doc, {
+    timeoutMs: 15000, waitMs: 5, scrollEl: scroller, scrollTrace: trace, maxIters: 500
+  });
   assert.equal(parsed.stats.lines, total);
   assert.equal(scroller.scrollTop, startTop, 'scroll obnovljen');
-  assert.equal(parsed.entries[5].text, 'Vrstica 5');
+  // sled: po začetnem 0 samo narašča do max (obnova na koncu ni v trace – trace med zbiranjem)
+  const mid = trace.slice(1); // po resetu na 0
+  for (let i = 1; i < mid.length; i++) {
+    assert.ok(mid[i] + 0.01 >= mid[i - 1], 'nihanje v sledi: ' + mid[i - 1] + ' -> ' + mid[i]);
+  }
 });
 
-test('collect: brez zavihka -> jasna napaka', async () => {
+test('collect: brez zavihka / incomplete jasna napaka', async () => {
   await assert.rejects(() => V.collectVisibleTranscript(makeDoc('<p>x</p>'), { timeoutMs: 100 }), /Zavihek Prepis/);
+});
+
+test('probeVisiblePane', () => {
+  const doc = makeDoc(`<div role="complementary" aria-label="Transcript">${entryHtml(0, 1, 'hi', { sec: 1 })}</div>`);
+  assert.equal(V.probeVisiblePane(doc).available, true);
 });

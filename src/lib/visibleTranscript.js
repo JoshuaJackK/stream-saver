@@ -7,6 +7,7 @@
   'use strict';
 
   const DEFAULT_TIMEOUT_MS = 90000;
+  const DEFAULT_MAX_ITERS = 4000;
   const ENTRY_SEL = '[data-testid="entryRenderer"]';
 
   function err(msg, code) {
@@ -15,7 +16,6 @@
     return e;
   }
 
-  /** "0:07" | "1:37:51" | "10:05" -> ms. Neveljavno -> null. */
   function parseVisibleTime(label) {
     if (typeof label !== 'string') return null;
     const s = label.trim();
@@ -26,10 +26,6 @@
     return null;
   }
 
-  /**
-   * aria-label oblike »Govorec 1 min 37 s« / »Govorec 2 h 3 min 4 s« / »Govorec 12 s«.
-   * Vrne { speaker, ms } ali null.
-   */
   function parseAriaLabel(label) {
     if (typeof label !== 'string') return null;
     const s = label.trim();
@@ -55,29 +51,37 @@
       if (el) return el;
     }
     const any = doc.querySelector(ENTRY_SEL);
-    return any ? (any.getRootNode && any.getRootNode() === doc ? doc : doc.body || doc.documentElement) : null;
+    return any ? (doc.body || doc.documentElement) : null;
   }
 
-  function findScrollParent(el) {
+  /** Drsnik znotraj meje (zavihek Prepis), sicer navzgor po drevesu. Nikoli ne vrača window, če obstaja notranji. */
+  function findScrollParent(el, boundary) {
+    const doc = el && el.ownerDocument;
+    if (!el || !doc) return null;
     let n = el;
-    while (n && n !== n.ownerDocument && n !== n.ownerDocument.documentElement) {
+    let fallback = null;
+    while (n && n !== doc.documentElement) {
+      if (boundary && n === boundary) break;
       if (n.nodeType === 1) {
         let oy = '';
-        try {
-          oy = (n.ownerDocument.defaultView.getComputedStyle(n).overflowY || '').toLowerCase();
-        } catch (e) { oy = ''; }
+        try { oy = (doc.defaultView.getComputedStyle(n).overflowY || '').toLowerCase(); } catch (e) { oy = ''; }
         const sh = n.scrollHeight || 0, ch = n.clientHeight || 0;
-        if (ch > 0 && sh > ch + 1 && (oy === 'auto' || oy === 'scroll' || oy === 'overlay')) return n;
+        if (ch > 0 && sh > ch + 1 && (oy === 'auto' || oy === 'scroll' || oy === 'overlay')) {
+          if (boundary && boundary.contains && boundary.contains(n)) return n;
+          if (!fallback) fallback = n;
+          if (boundary && (n === boundary || (boundary.contains && boundary.contains(n)))) return n;
+        }
       }
       n = n.parentElement;
     }
-    return (el && el.ownerDocument && (el.ownerDocument.scrollingElement || el.ownerDocument.documentElement)) || null;
+    if (fallback) return fallback;
+    if (boundary) {
+      const sh = boundary.scrollHeight || 0, ch = boundary.clientHeight || 0;
+      if (ch > 0 && sh > ch + 1) return boundary;
+    }
+    return doc.scrollingElement || doc.documentElement;
   }
 
-  /**
-   * Prebere trenutno nameščene vrstice v korenu. Ne bere src/innerHTML.
-   * Vrne Map index -> { index, text, speaker, timeMs, setSize }.
-   */
   function harvestMounted(root, into) {
     const map = into || new Map();
     if (!root || !root.querySelectorAll) return map;
@@ -117,7 +121,7 @@
 
       const prev = map.get(index);
       if (prev && prev.text === text && prev.timeMs != null && timeMs == null) {
-        // ohrani že znan čas
+        /* keep */
       } else {
         map.set(index, {
           index,
@@ -142,10 +146,6 @@
     return total;
   }
 
-  /**
-   * Dopolni govorce naprej po sosednjih indekih; zgradi obliko kot SSTranscript.parseTranscript.
-   * Manjkajoči indeksi ali čas -> napaka (brez delnega izvoza).
-   */
   function assembleParsed(map, expectedTotal) {
     if (!map || map.size === 0) throw err('V zavihku Prepis ni bilo mogoče prebrati nobene vrstice.', 'EMPTY');
     const total = expectedTotal != null ? expectedTotal : inferSetSize(map);
@@ -206,6 +206,51 @@
     });
   }
 
+  /** Počakaj na spremembo DOM (novi vnosi) ali potek časa. Brez behavior:smooth. */
+  function waitForDomChange(root, pred, opts) {
+    opts = opts || {};
+    const ms = opts.waitMs != null ? opts.waitMs : 400;
+    const signal = opts.signal;
+    return new Promise((resolve, reject) => {
+      if (signal && signal.aborted) return reject(err('Prekinjeno.', 'ABORT'));
+      if (pred()) return resolve(true);
+      let done = false;
+      const finish = (v) => {
+        if (done) return;
+        done = true;
+        try { obs.disconnect(); } catch (e) { /* */ }
+        clearTimeout(t);
+        if (signal) signal.removeEventListener('abort', onAb);
+        resolve(v);
+      };
+      const onAb = () => { finish(false); reject(err('Prekinjeno.', 'ABORT')); };
+      const obs = new (root.ownerDocument.defaultView.MutationObserver)(() => {
+        if (pred()) finish(true);
+      });
+      try {
+        obs.observe(root, { childList: true, subtree: true, characterData: true });
+      } catch (e) {
+        /* fallback na čas */
+      }
+      const t = setTimeout(() => finish(pred()), ms);
+      if (signal) signal.addEventListener('abort', onAb, { once: true });
+    });
+  }
+
+  function setScrollTop(el, top) {
+    // Samo takojšnji pomik – brez smooth (sicer zanka bere med animacijo in niha).
+    const v = Math.max(0, top);
+    if (typeof el.scrollTo === 'function') {
+      try { el.scrollTo({ top: v, left: el.scrollLeft || 0, behavior: 'instant' }); } catch (e) {
+        try { el.scrollTo(el.scrollLeft || 0, v); } catch (e2) { el.scrollTop = v; }
+      }
+    } else {
+      el.scrollTop = v;
+    }
+    // nekateri brskalniki ignorirajo 'instant' – vedno še neposredno
+    el.scrollTop = v;
+  }
+
   function probeVisiblePane(doc) {
     const root = findTranscriptRoot(doc);
     if (!root) return { available: false, setSize: null, mounted: 0 };
@@ -216,26 +261,62 @@
     return { available: map.size > 0 || !!root.querySelector(ENTRY_SEL), setSize, mounted: map.size };
   }
 
+  function firstMissing(map, total) {
+    for (let i = 0; i < total; i++) if (!map.has(i)) return i;
+    return total;
+  }
+
   /**
-   * Po uporabnikovem kliku: drsi po virtualnem seznamu, zbira vrstice, obnovi položaj drsnika.
-   * opts: { timeoutMs, signal, waitMs, root, scrollEl } – root/scrollEl za teste.
+   * Monoton predhodni algoritem (za regresijski test): skok na frac*maxScroll
+   * lahko niha gor/dol. Izvozeno samo za teste.
+   */
+  function planScrollLegacy(prevTop, missing0, total, maxScroll, clientHeight) {
+    const step = Math.max(48, Math.floor((clientHeight || 200) * 0.7));
+    const target = missing0 != null ? missing0 : total - 1;
+    const frac = total > 1 ? target / (total - 1) : 0;
+    const jump = Math.floor(frac * maxScroll);
+    if (missing0 != null && Math.abs(prevTop - jump) > step) return { top: jump, mode: 'jump' };
+    return { top: Math.min(maxScroll, prevTop + step), mode: 'step' };
+  }
+
+  /** Novi načrt: samo naprej (ali ostanek na dnu). Nikoli nazaj. */
+  function planScrollMonotonic(prevTop, maxScroll, clientHeight) {
+    const step = Math.max(40, Math.floor((clientHeight || 200) * 0.55));
+    if (prevTop >= maxScroll - 1) return { top: maxScroll, mode: 'bottom' };
+    return { top: Math.min(maxScroll, prevTop + step), mode: 'step' };
+  }
+
+  /**
+   * Zbira vse vrstice z monotonim drsenjem navzdol + MutationObserver.
+   * opts.onProgress({done,total,message}), opts.scrollTrace (array) za teste.
    */
   async function collectVisibleTranscript(doc, opts) {
     opts = opts || {};
     const timeoutMs = opts.timeoutMs != null ? opts.timeoutMs : DEFAULT_TIMEOUT_MS;
-    const waitMs = opts.waitMs != null ? opts.waitMs : 120;
+    const maxIters = opts.maxIters != null ? opts.maxIters : DEFAULT_MAX_ITERS;
+    const waitMs = opts.waitMs != null ? opts.waitMs : 180;
     const signal = opts.signal;
+    const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
+    const scrollTrace = opts.scrollTrace || null;
     const root = opts.root || findTranscriptRoot(doc);
     if (!root) throw err('Zavihek Prepis ni odprt ali ni viden. Odpri Prepis v predvajalniku in poskusi znova.', 'NO_PANE');
 
     const first = root.querySelector(ENTRY_SEL);
     if (!first) throw err('V zavihku Prepis ni vrstic. Počakaj, da se naložijo, ali osveži stran.', 'NO_ROWS');
 
-    const scrollEl = opts.scrollEl || findScrollParent(first) || findScrollParent(root);
+    const scrollEl = opts.scrollEl || findScrollParent(first, root) || findScrollParent(first) || findScrollParent(root);
     const savedTop = scrollEl ? scrollEl.scrollTop : 0;
     const savedLeft = scrollEl ? scrollEl.scrollLeft : 0;
     const map = new Map();
     const t0 = Date.now();
+
+    const report = (msg) => {
+      if (onProgress) {
+        let total = null;
+        try { total = inferSetSize(map); } catch (e) { /* */ }
+        onProgress({ done: map.size, total: total, message: msg });
+      }
+    };
 
     try {
       harvestMounted(root, map);
@@ -243,8 +324,9 @@
       try { total = inferSetSize(map); } catch (e) { if (e.code === 'SETSIZE') throw e; }
 
       if (scrollEl) {
-        try { scrollEl.scrollTop = 0; } catch (e) { /* ignore */ }
-        await sleep(waitMs, signal);
+        setScrollTop(scrollEl, 0);
+        if (scrollTrace) scrollTrace.push(0);
+        await waitForDomChange(root, () => true, { waitMs: Math.min(waitMs, 120), signal });
         harvestMounted(root, map);
         try { total = inferSetSize(map) || total; } catch (e) { if (e.code === 'SETSIZE') throw e; }
       }
@@ -252,49 +334,81 @@
       if (total == null || total <= 0) {
         throw err('Števila vrstic prepisa ni bilo mogoče določiti. Preveri, da je zavihek Prepis odprt.', 'SETSIZE');
       }
+      report('Berem viden prepis: ' + map.size + '/' + total + ' …');
 
       let stagnant = 0;
       let lastSize = map.size;
-      while (map.size < total && Date.now() - t0 < timeoutMs) {
+      let iters = 0;
+      let passesAtBottom = 0;
+
+      while (map.size < total) {
         if (signal && signal.aborted) throw err('Prekinjeno.', 'ABORT');
+        if (Date.now() - t0 >= timeoutMs) {
+          throw err(
+            'Časovna omejitev pri branju vidnega prepisa (' + map.size + '/' + total + '). '
+              + 'Poskusi znova z odprtim zavihkom Prepis.',
+            'TIMEOUT'
+          );
+        }
+        if (++iters > maxIters) {
+          throw err('Preveč korakov pri branju vidnega prepisa (' + map.size + '/' + total + ').', 'ITERS');
+        }
         if (!scrollEl) break;
 
-        const missing = [];
-        for (let i = 0; i < total; i++) if (!map.has(i)) missing.push(i);
-        const target = missing.length ? missing[0] : total - 1;
+        const need = firstMissing(map, total);
         const maxScroll = Math.max(0, (scrollEl.scrollHeight || 0) - (scrollEl.clientHeight || 0));
-        const frac = total > 1 ? target / (total - 1) : 0;
-        const jump = Math.floor(frac * maxScroll);
-        const step = Math.max(48, Math.floor((scrollEl.clientHeight || 200) * 0.7));
-        const prevTop = scrollEl.scrollTop;
-        // najprej poskusi skok proti manjkajočemu, sicer korak navzdol
-        if (missing.length && Math.abs(prevTop - jump) > step) {
-          scrollEl.scrollTop = jump;
-        } else {
-          scrollEl.scrollTop = Math.min(maxScroll, prevTop + step);
-        }
-        await sleep(waitMs, signal);
-        harvestMounted(root, map);
+        const prevTop = scrollEl.scrollTop || 0;
+        const plan = planScrollMonotonic(prevTop, maxScroll, scrollEl.clientHeight || 200);
+        setScrollTop(scrollEl, plan.top);
+        if (scrollTrace) scrollTrace.push(plan.top);
 
-        if (map.size === lastSize && Math.abs((scrollEl.scrollTop || 0) - prevTop) < 1) {
+        const sizeBefore = map.size;
+        await waitForDomChange(root, () => {
+          harvestMounted(root, map);
+          return map.size > sizeBefore || map.has(need) || (scrollEl.scrollTop || 0) >= maxScroll - 1;
+        }, { waitMs, signal });
+        harvestMounted(root, map);
+        report('Berem viden prepis: ' + map.size + '/' + total + ' …');
+
+        if (map.size === lastSize) {
           stagnant++;
-          if (stagnant >= 20) break;
+          if (plan.mode === 'bottom' || (scrollEl.scrollTop || 0) >= maxScroll - 1) {
+            passesAtBottom++;
+            // na dnu počakaj še malo (počasna virtualizacija)
+            await sleep(Math.min(250, waitMs), signal);
+            harvestMounted(root, map);
+            if (map.size > lastSize) { stagnant = 0; lastSize = map.size; passesAtBottom = 0; continue; }
+            if (passesAtBottom >= 8) break;
+          } else if (stagnant >= 40) {
+            break;
+          }
         } else {
           stagnant = 0;
+          passesAtBottom = 0;
           lastSize = map.size;
+        }
+
+        // varovalo: scrollTop se ne sme zmanjšati (razen ob začetnem 0)
+        if ((scrollEl.scrollTop || 0) + 0.5 < prevTop && prevTop > 0) {
+          // popravi naprej – obramba pred tujim smooth/scrollIntoView
+          setScrollTop(scrollEl, Math.max(prevTop, plan.top));
         }
       }
 
       return assembleParsed(map, total);
     } finally {
       if (scrollEl) {
-        try { scrollEl.scrollTop = savedTop; scrollEl.scrollLeft = savedLeft; } catch (e) { /* ignore */ }
+        try {
+          setScrollTop(scrollEl, savedTop);
+          scrollEl.scrollLeft = savedLeft;
+        } catch (e) { /* ignore */ }
       }
     }
   }
 
   const api = {
     DEFAULT_TIMEOUT_MS,
+    DEFAULT_MAX_ITERS,
     parseVisibleTime,
     parseAriaLabel,
     findTranscriptRoot,
@@ -304,6 +418,10 @@
     assembleParsed,
     probeVisiblePane,
     collectVisibleTranscript,
+    planScrollLegacy,
+    planScrollMonotonic,
+    firstMissing,
+    setScrollTop,
     textOf
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
