@@ -28,10 +28,19 @@ test('parseVisibleTime / parseAriaLabel', () => {
   assert.equal(V.parseVisibleTime('0:07'), 7000);
   assert.equal(V.parseVisibleTime('1:37:51'), 5871000);
   assert.deepEqual(V.parseAriaLabel('Ana Novak 0 min 7 s'), { speaker: 'Ana Novak', ms: 7000 });
+  assert.deepEqual(V.parseAriaLabel('Speaker 0 min 7 s'), { speaker: 'Speaker', ms: 7000 });
+  assert.deepEqual(V.parseAriaLabel('Speaker 18 min 26 s'), { speaker: 'Speaker', ms: 1106000 });
+  assert.deepEqual(V.parseAriaLabel('Speaker 1 ura 11 min 29 s'), { speaker: 'Speaker', ms: 4289000 });
+  assert.deepEqual(V.parseAriaLabel('Speaker 1 ura 12 min'), { speaker: 'Speaker', ms: 4320000 });
+  assert.deepEqual(V.parseAriaLabel('Speaker 2 h 41 min 17 s'), { speaker: 'Speaker', ms: 9677000 });
+  assert.deepEqual(V.parseAriaLabel('Speaker 3 h 33 min 52 s'), { speaker: 'Speaker', ms: 12832000 });
+  assert.deepEqual(V.parseAriaLabel('Speaker 3 h 45 min'), { speaker: 'Speaker', ms: 13500000 });
   assert.deepEqual(V.parseAriaLabel('Speaker 2 h 3 min 4 s'), { speaker: 'Speaker', ms: ((2 * 60 + 3) * 60 + 4) * 1000 });
   assert.deepEqual(V.parseAriaLabel('Speaker 97 min 51 s'), { speaker: 'Speaker', ms: (97 * 60 + 51) * 1000 });
   assert.deepEqual(V.parseAriaLabel('Speaker 12 s'), { speaker: 'Speaker', ms: 12000 });
-  assert.equal(V.parseAriaLabel('Speaker 2 ure 3 min'), null); // ne podpiramo brez preverjenega vzorca
+  assert.equal(V.parseAriaLabel('Speaker 2 ure 3 min'), null); // množina "ure" ni preverjena
+  assert.equal(V.parseAriaLabel('Speaker 2 h'), null); // brez minut
+  assert.equal(V.parseAriaLabel('Speaker 1 ura 70 min'), null); // minute > 59
 });
 
 test('harvest + assemble: govorec se prenese, popoln 0..n-1', () => {
@@ -193,6 +202,118 @@ test('collectVisibleTranscript: virtualni seznam z eviction – monoton, obnovi 
 
 test('collect: brez zavihka / incomplete jasna napaka', async () => {
   await assert.rejects(() => V.collectVisibleTranscript(makeDoc('<p>x</p>'), { timeoutMs: 100 }), /Zavihek Prepis/);
+});
+
+
+test('groupContiguous / listMissing', () => {
+  const map = new Map([[0, {}], [1, {}], [5, {}], [6, {}], [7, {}], [10, {}]]);
+  assert.deepEqual(V.listMissing(map, 12), [2, 3, 4, 8, 9, 11]);
+  assert.deepEqual(V.groupContiguous([2, 3, 4, 8, 9, 11]), [
+    { start: 2, end: 4 }, { start: 8, end: 9 }, { start: 11, end: 11 }
+  ]);
+});
+
+test('collect: virtualizacija s 5-vrstično luknjo – sidro dopolni, ne izmisli', async () => {
+  // Model: monoton prehod do dna nikoli ne namesti 50..54; šele scrollIntoView
+  // predhodnega sidra (entry-49) odklene luknjo. Skupaj 120 vrstic.
+  const total = 120;
+  const holeLo = 110, holeHi = 114; // vključno – 5 vrstic blizu konca (kot 1150..1154/1214)
+  const rowH = 40;
+  const windowSize = 12;
+  const scrollHeight = total * rowH;
+  const clientHeight = 400;
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM(`<!doctype html><html><body>
+    <div role="complementary" aria-label="Prepis">
+      <div id="scroller" style="overflow-y:scroll; height:${clientHeight}px;"></div>
+    </div>
+  </body></html>`, { pretendToBeVisual: true });
+  const doc = dom.window.document;
+  const scroller = doc.getElementById('scroller');
+  Object.defineProperty(scroller, 'clientHeight', { get: () => clientHeight, configurable: true });
+  Object.defineProperty(scroller, 'scrollHeight', { get: () => scrollHeight, configurable: true });
+
+  let scrollTop = 0;
+  let unlockHole = false;
+  let mountedRanges = [];
+
+  function shouldMount(i) {
+    if (i >= holeLo && i <= holeHi && !unlockHole) return false;
+    return true;
+  }
+
+  function remount() {
+    scroller.innerHTML = '';
+    const start = Math.max(0, Math.min(total - 1, Math.floor(scrollTop / rowH)));
+    const end = Math.min(total, start + windowSize);
+    mountedRanges.push([start, end, unlockHole]);
+    for (let i = start; i < end; i++) {
+      if (!shouldMount(i)) continue;
+      scroller.insertAdjacentHTML('beforeend', entryHtml(i, total, 'Vrstica ' + i, {
+        speaker: 'S', showHeader: i === 0 || i === 60, showTs: i === 0 || i === 60,
+        sec: i * 2
+      }));
+    }
+    // scrollIntoView na nameščenih sidrih odklene luknjo
+    for (const el of scroller.querySelectorAll('[id^="entry-"]')) {
+      el.scrollIntoView = function scrollIntoView() {
+        const m = /^entry-(\d+)$/.exec(el.id);
+        if (!m) return;
+        const idx = parseInt(m[1], 10);
+        if (idx >= holeLo - 5 && idx <= holeHi + 1) unlockHole = true;
+        scrollTop = Math.max(0, Math.min(scrollHeight - clientHeight, idx * rowH));
+        remount();
+      };
+    }
+  }
+
+  Object.defineProperty(scroller, 'scrollTop', {
+    get: () => scrollTop,
+    set: (v) => {
+      const next = Math.max(0, Math.min(scrollHeight - clientHeight, Number(v) || 0));
+      // sam scrollTop (brez sidra) luknje ne odklene
+      scrollTop = next;
+      remount();
+    },
+    configurable: true
+  });
+  remount();
+  scroller.scrollTop = 0;
+  const startTop = scroller.scrollTop;
+
+  const trace = [];
+  const parsed = await V.collectVisibleTranscript(doc, {
+    timeoutMs: 20000, waitMs: 2, scrollEl: scroller, scrollTrace: trace, maxIters: 2000
+  });
+  assert.equal(parsed.stats.lines, total, 'pričakovanih ' + total + ' vrstic');
+  assert.equal(parsed.entries[110].text, 'Vrstica 110');
+  assert.equal(parsed.entries[114].text, 'Vrstica 114');
+  assert.equal(scroller.scrollTop, startTop, 'scroll obnovljen');
+  // monotonost velja za glavni prehod (trace); popravilo gre prek scrollIntoView
+  const mid = trace.slice(1);
+  for (let i = 1; i < mid.length; i++) {
+    assert.ok(mid[i] + 0.01 >= mid[i - 1], 'nihanje v sledi: ' + mid[i - 1] + ' -> ' + mid[i]);
+  }
+  assert.ok(unlockHole, 'luknja mora biti odklenjena prek sidra');
+});
+
+test('assemble: preverjene ura/h oblike dajo popoln TXT', () => {
+  const labels = [
+    ['Speaker 0 min 7 s', 7000],
+    ['Speaker 1 ura 12 min', 4320000],
+    ['Speaker 3 h 45 min', 13500000]
+  ];
+  const map = new Map();
+  labels.forEach(([aria, ms], i) => {
+    const p = V.parseAriaLabel(aria);
+    assert.ok(p, aria);
+    assert.equal(p.ms, ms);
+    map.set(i, { index: i, text: 't' + i, speaker: p.speaker, timeMs: p.ms, setSize: 3, ariaLabel: aria });
+  });
+  const parsed = V.assembleParsed(map, 3);
+  assert.equal(parsed.stats.lines, 3);
+  assert.match(T.toTxt(parsed), /Speaker: t0/);
+  assert.match(T.toVtt(parsed), /WEBVTT/);
 });
 
 test('probeVisiblePane', () => {

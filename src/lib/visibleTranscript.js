@@ -30,10 +30,20 @@
   function parseAriaLabel(label) {
     if (typeof label !== 'string') return null;
     const s = label.trim();
-    let m = /^(.*?)\s+(\d+)\s*h\s+(\d+)\s*min\s+(\d+)\s*s\s*$/i.exec(s);
-    if (m) return { speaker: m[1].trim(), ms: ((+m[2] * 60 + +m[3]) * 60 + +m[4]) * 1000 };
+    // Preverjene oblike: "… N h|ura M min [S s]" (sekunde neobvezne), "… N min S s", "… N s".
+    // Enote h|ura (ne "ure"/"ur"/"hour"); minute so v vseh opazovanih vzorcih z urami.
+    let m = /^(.*?)\s+(\d+)\s*(?:h|ura)\s+(\d+)\s*min(?:\s+(\d+)\s*s)?\s*$/i.exec(s);
+    if (m) {
+      const hours = +m[2], mins = +m[3], secs = m[4] != null ? +m[4] : 0;
+      if (mins > 59 || secs > 59) return null;
+      return { speaker: m[1].trim(), ms: ((hours * 60 + mins) * 60 + secs) * 1000 };
+    }
     m = /^(.*?)\s+(\d+)\s*min\s+(\d+)\s*s\s*$/i.exec(s);
-    if (m) return { speaker: m[1].trim(), ms: (+m[2] * 60 + +m[3]) * 1000 };
+    if (m) {
+      const secs = +m[3];
+      if (secs > 59) return null;
+      return { speaker: m[1].trim(), ms: (+m[2] * 60 + secs) * 1000 };
+    }
     m = /^(.*?)\s+(\d+)\s*s\s*$/i.exec(s);
     if (m) return { speaker: m[1].trim(), ms: (+m[2]) * 1000 };
     return null;
@@ -286,6 +296,139 @@
     return total;
   }
 
+  function listMissing(map, total) {
+    const missing = [];
+    for (let i = 0; i < total; i++) if (!map.has(i)) missing.push(i);
+    return missing;
+  }
+
+  function groupContiguous(indices) {
+    const segs = [];
+    for (const idx of indices) {
+      if (!segs.length || idx !== segs[segs.length - 1].end + 1) segs.push({ start: idx, end: idx });
+      else segs[segs.length - 1].end = idx;
+    }
+    return segs;
+  }
+
+  /** Stabilen podpis trenutno nameščenih vrstic (ne kumulativnega zemljevida). */
+  function mountedSignature(root) {
+    if (!root || !root.querySelectorAll) return '';
+    const parts = [];
+    const nodes = root.querySelectorAll(ENTRY_SEL);
+    for (const node of nodes) {
+      const wrap = node.id && /^entry-(\d+)$/.test(node.id) ? node
+        : (node.querySelector && node.querySelector('[id^="entry-"]')) || node;
+      const idAttr = wrap.id || node.id || '';
+      const im = /^entry-(\d+)$/.exec(idAttr);
+      if (!im) continue;
+      const index = parseInt(im[1], 10);
+      const sub = (wrap.querySelector && wrap.querySelector('#sub-entry-' + index))
+        || (root.querySelector && root.querySelector('#sub-entry-' + index));
+      const text = sub ? textOf(sub) : '';
+      const aria = (wrap.getAttribute && wrap.getAttribute('aria-label')) || '';
+      const set = sub && sub.getAttribute ? (sub.getAttribute('aria-setsize') || '') : '';
+      parts.push(index + '\x1f' + text + '\x1f' + aria + '\x1f' + set);
+    }
+    return parts.join('\x1e');
+  }
+
+  /**
+   * Počakaj, da se nameščeno okno umiri: dve zaporedni enaki podpisni sliki.
+   * Ne konča ob prvem povečanju kumulativnega map.size.
+   */
+  async function waitSettled(root, opts) {
+    opts = opts || {};
+    const waitMs = opts.waitMs != null ? opts.waitMs : 180;
+    const signal = opts.signal;
+    const need = opts.stableCount != null ? opts.stableCount : 2;
+    const maxRounds = opts.maxRounds != null ? opts.maxRounds : 3;
+    let prev = mountedSignature(root);
+    let equal = 1;
+    for (let round = 0; round < maxRounds && equal < need; round++) {
+      await sleep(Math.max(1, waitMs), signal);
+      const next = mountedSignature(root);
+      if (next === prev) equal++;
+      else { prev = next; equal = 1; }
+    }
+    return prev;
+  }
+
+  function findMountedEntry(root, index) {
+    if (!root || !root.querySelector) return null;
+    return root.querySelector('#entry-' + index)
+      || root.querySelector('[id="entry-' + index + '"]');
+  }
+
+  /**
+   * Ciljano popravilo lukenj po monotonem prehodu do dna.
+   * Samo manjkajoči segmenti; scrollIntoView na predhodni nameščeni sidro.
+   * Ne zažene celotnega prehoda z vrha znova. Ne izmišlja vrstic.
+   */
+  async function repairMissingHoles(root, scrollEl, map, total, opts) {
+    opts = opts || {};
+    const waitMs = opts.waitMs != null ? opts.waitMs : 180;
+    const signal = opts.signal;
+    const onProgress = opts.onProgress;
+    const maxSegs = opts.maxSegs != null ? opts.maxSegs : 12;
+    const maxSegLen = opts.maxSegLen != null ? opts.maxSegLen : 40;
+    const maxAttempts = opts.maxAttempts != null ? opts.maxAttempts : 5;
+
+    let missing = listMissing(map, total);
+    if (!missing.length) return;
+    const segs = groupContiguous(missing).slice(0, maxSegs);
+
+    for (const seg of segs) {
+      const segLen = seg.end - seg.start + 1;
+      if (segLen > maxSegLen) continue;
+      if (onProgress) {
+        onProgress({
+          done: map.size, total,
+          message: 'Dopolnjujem manjkajoče vrstice ' + seg.start + '–' + seg.end + ' …'
+        });
+      }
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        if (signal && signal.aborted) throw err('Prekinjeno.', 'ABORT');
+        let allHave = true;
+        for (let i = seg.start; i <= seg.end; i++) if (!map.has(i)) { allHave = false; break; }
+        if (allHave) break;
+
+        let anchorEl = null;
+        let anchorIdx = -1;
+        for (let a = seg.start - 1; a >= Math.max(0, seg.start - 40); a--) {
+          anchorEl = findMountedEntry(root, a);
+          if (anchorEl) { anchorIdx = a; break; }
+        }
+        if (!anchorEl) {
+          for (let a = seg.end + 1; a <= Math.min(total - 1, seg.end + 40); a++) {
+            anchorEl = findMountedEntry(root, a);
+            if (anchorEl) { anchorIdx = a; break; }
+          }
+        }
+
+        if (anchorEl && typeof anchorEl.scrollIntoView === 'function') {
+          const block = attempt === 0 ? 'start' : (attempt === 1 ? 'center' : 'nearest');
+          try { anchorEl.scrollIntoView({ block: block, behavior: 'instant' }); } catch (e1) {
+            try { anchorEl.scrollIntoView(true); } catch (e2) { /* */ }
+          }
+          if (scrollEl && attempt >= 1) {
+            const nudge = Math.max(16, Math.floor((scrollEl.clientHeight || 200) * 0.12));
+            const dir = anchorIdx >= 0 && anchorIdx < seg.start ? 1 : -1;
+            setScrollTop(scrollEl, Math.max(0, (scrollEl.scrollTop || 0) + dir * nudge * attempt));
+          }
+        } else if (scrollEl) {
+          // Grobo sidro: nekaj korakov nazaj od dna / naprej – preverimo nameščeno okno.
+          const maxScroll = Math.max(0, (scrollEl.scrollHeight || 0) - (scrollEl.clientHeight || 0));
+          const step = Math.max(40, Math.floor((scrollEl.clientHeight || 200) * 0.55));
+          setScrollTop(scrollEl, Math.max(0, maxScroll - step * (attempt + 1)));
+        }
+
+        await waitSettled(root, { waitMs, signal, stableCount: 2, maxRounds: 3 });
+        harvestMounted(root, map);
+      }
+    }
+  }
+
   /**
    * Monoton predhodni algoritem (za regresijski test): skok na frac*maxScroll
    * lahko niha gor/dol. Izvozeno samo za teste.
@@ -299,9 +442,10 @@
     return { top: Math.min(maxScroll, prevTop + step), mode: 'step' };
   }
 
-  /** Novi načrt: samo naprej (ali ostanek na dnu). Nikoli nazaj. */
-  function planScrollMonotonic(prevTop, maxScroll, clientHeight) {
-    const step = Math.max(40, Math.floor((clientHeight || 200) * 0.55));
+  /** Novi načrt: samo naprej (ali ostanek na dnu). Nikoli nazaj. Ob koncu manjši korak. */
+  function planScrollMonotonic(prevTop, maxScroll, clientHeight, nearEnd) {
+    const frac = nearEnd ? 0.30 : 0.55;
+    const step = Math.max(40, Math.floor((clientHeight || 200) * frac));
     if (prevTop >= maxScroll - 1) return { top: maxScroll, mode: 'bottom' };
     return { top: Math.min(maxScroll, prevTop + step), mode: 'step' };
   }
@@ -346,7 +490,7 @@
       if (scrollEl) {
         setScrollTop(scrollEl, 0);
         if (scrollTrace) scrollTrace.push(0);
-        await waitForDomChange(root, () => true, { waitMs: Math.min(waitMs, 120), signal });
+        await waitSettled(root, { waitMs: Math.min(waitMs, 120), signal, stableCount: 2, maxRounds: 3 });
         harvestMounted(root, map);
         try { total = inferSetSize(map) || total; } catch (e) { if (e.code === 'SETSIZE') throw e; }
       }
@@ -375,18 +519,17 @@
         }
         if (!scrollEl) break;
 
-        const need = firstMissing(map, total);
         const maxScroll = Math.max(0, (scrollEl.scrollHeight || 0) - (scrollEl.clientHeight || 0));
         const prevTop = scrollEl.scrollTop || 0;
-        const plan = planScrollMonotonic(prevTop, maxScroll, scrollEl.clientHeight || 200);
+        const need = firstMissing(map, total);
+        const nearEnd = (need >= Math.max(0, total - 40))
+          || (maxScroll > 0 && prevTop >= maxScroll * 0.82);
+        const plan = planScrollMonotonic(prevTop, maxScroll, scrollEl.clientHeight || 200, nearEnd);
         setScrollTop(scrollEl, plan.top);
         if (scrollTrace) scrollTrace.push(plan.top);
 
-        const sizeBefore = map.size;
-        await waitForDomChange(root, () => {
-          harvestMounted(root, map);
-          return map.size > sizeBefore || map.has(need) || (scrollEl.scrollTop || 0) >= maxScroll - 1;
-        }, { waitMs, signal });
+        // Umiri nameščeno okno (2 enaka podpisa), nato šele poženi v map.
+        await waitSettled(root, { waitMs, signal, stableCount: 2, maxRounds: 3 });
         harvestMounted(root, map);
         report('Berem viden prepis: ' + map.size + '/' + total + ' …');
 
@@ -394,11 +537,11 @@
           stagnant++;
           if (plan.mode === 'bottom' || (scrollEl.scrollTop || 0) >= maxScroll - 1) {
             passesAtBottom++;
-            // na dnu počakaj še malo (počasna virtualizacija)
-            await sleep(Math.min(250, waitMs), signal);
+            await waitSettled(root, { waitMs, signal, stableCount: 2, maxRounds: 2 });
             harvestMounted(root, map);
             if (map.size > lastSize) { stagnant = 0; lastSize = map.size; passesAtBottom = 0; continue; }
-            if (passesAtBottom >= 8) break;
+            // Po nekaj umiritvah na dnu → ciljano popravilo lukenj (ne nov prehod z vrha).
+            if (passesAtBottom >= 3) break;
           } else if (stagnant >= 40) {
             break;
           }
@@ -408,11 +551,17 @@
           lastSize = map.size;
         }
 
-        // varovalo: scrollTop se ne sme zmanjšati (razen ob začetnem 0)
+        // varovalo med monotonim prehodom: scrollTop se ne sme zmanjšati
         if ((scrollEl.scrollTop || 0) + 0.5 < prevTop && prevTop > 0) {
-          // popravi naprej – obramba pred tujim smooth/scrollIntoView
           setScrollTop(scrollEl, Math.max(prevTop, plan.top));
         }
+      }
+
+      if (map.size < total && scrollEl) {
+        await repairMissingHoles(root, scrollEl, map, total, {
+          waitMs, signal,
+          onProgress: onProgress ? (p) => onProgress(p) : null
+        });
       }
 
       report('Preverjam vseh ' + total + ' vrstic …');
@@ -442,6 +591,11 @@
     planScrollLegacy,
     planScrollMonotonic,
     firstMissing,
+    listMissing,
+    groupContiguous,
+    mountedSignature,
+    waitSettled,
+    repairMissingHoles,
     setScrollTop,
     textOf
   };
