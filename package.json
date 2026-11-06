@@ -1,6 +1,6 @@
 {
   "name": "stream-saver",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "description": "Firefox razširitev za shranjevanje posnetkov Microsoft Stream (SharePoint/OneDrive/Teams) za osebno uporabo.",
   "directories": {
     "test": "test"
