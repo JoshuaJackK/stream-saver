@@ -330,3 +330,74 @@ test('probeVisiblePane', () => {
   const doc = makeDoc(`<div role="complementary" aria-label="Transcript">${entryHtml(0, 1, 'hi', { sec: 1 })}</div>`);
   assert.equal(V.probeVisiblePane(doc).available, true);
 });
+
+
+function eventEntryHtml(i, total, text) {
+  // Opazovano: prazen aria-label, razred eventText-*, brez časovnega žiga / govorca.
+  return `<div data-testid="entryRenderer"><div id="entry-${i}" role="group" aria-label=""><div id="sub-entry-${i}" role="listitem" class="eventText-abc123" aria-posinset="${i + 1}" aria-setsize="${total}">${text}</div></div></div>`;
+}
+
+test('harvest: eventText → event:true, brez časa; prazen aria brez razreda ostane TIME', () => {
+  const total = 2;
+  const html = entryHtml(0, total, 'Govor', { speaker: 'Ana', showHeader: true, showTs: true, sec: 7 })
+    + eventEntryHtml(1, total, 'Oseba je zaustavila prepis');
+  const doc = makeDoc(`<div role="complementary" aria-label="Prepis">${html}</div>`);
+  const map = V.harvestMounted(V.findTranscriptRoot(doc), new Map());
+  assert.equal(map.get(1).event, true);
+  assert.equal(map.get(1).timeMs, null);
+  assert.equal(map.get(1).text, 'Oseba je zaustavila prepis');
+  assert.equal(map.get(0).event, false);
+  assert.equal(V.hasEventTextClass(doc.querySelector('#sub-entry-1')), true);
+  assert.throws(
+    () => V.assembleParsed(new Map([[0, { index: 0, text: 'x', speaker: '', timeMs: null, setSize: 1, ariaLabel: '', event: false }]]), 1),
+    /Manjka čas za vrstico 1/
+  );
+});
+
+test('assemble + TXT/VTT: terminalni sistemski dogodek ohrani vsebino, govor oštevilčen', () => {
+  const total = 3;
+  const html = [
+    entryHtml(0, total, 'Prva', { speaker: 'Ana', showHeader: true, showTs: true, sec: 7 }),
+    entryHtml(1, total, 'Druga', { speaker: 'Ana', sec: 10 }),
+    eventEntryHtml(2, total, 'Oseba je zaustavila prepis')
+  ].join('');
+  const doc = makeDoc(`<div role="complementary" aria-label="Prepis">${html}</div>`);
+  const map = V.harvestMounted(V.findTranscriptRoot(doc), new Map());
+  assert.equal(map.size, 3);
+  const parsed = V.assembleParsed(map, total);
+  assert.equal(parsed.stats.lines, 3);
+  assert.equal(parsed.stats.events, 1);
+  assert.equal(parsed.stats.skippedBadTime, 0);
+  assert.equal(parsed.entries[2].systemEvent, true);
+  assert.equal(parsed.entries[2].startMs, null);
+  assert.equal(parsed.entries[2].endMs, null);
+  assert.equal(parsed.entries[2].speaker, '');
+  assert.equal(parsed.entries[2].text, 'Oseba je zaustavila prepis');
+  assert.equal(parsed.entries[0].speaker, 'Ana');
+  assert.equal(parsed.entries[1].speaker, 'Ana');
+  assert.ok(Number.isFinite(parsed.entries[0].endMs));
+  assert.ok(Number.isFinite(parsed.entries[1].startMs));
+  // dogodek ne podeduje govorca in ne zlomi endMs prejšnje
+  assert.equal(parsed.entries[1].endMs, parsed.entries[1].startMs + 1);
+  const txt = T.toTxt(parsed);
+  assert.match(txt, /\[0:00:07\] Ana: Prva/);
+  assert.match(txt, /\[brez časa\] Sistemski dogodek: Oseba je zaustavila prepis/);
+  assert.doesNotMatch(txt, /null|undefined/i);
+  const vtt = T.toVtt(parsed);
+  assert.match(vtt, /^WEBVTT\n/);
+  assert.match(vtt, /NOTE\nSistemski dogodek brez časa: Oseba je zaustavila prepis/);
+  assert.doesNotMatch(vtt, /null|undefined/i);
+  assert.doesNotMatch(vtt, /NaN/);
+});
+
+test('assemble: dogodek med govorom – endMs gre na naslednji časovni vnos', () => {
+  const map = new Map([
+    [0, { index: 0, text: 'a', speaker: 'A', timeMs: 1000, setSize: 3, event: false }],
+    [1, { index: 1, text: 'Oseba je zaustavila prepis', speaker: '', timeMs: null, setSize: 3, event: true }],
+    [2, { index: 2, text: 'b', speaker: 'B', timeMs: 5000, setSize: 3, event: false }]
+  ]);
+  const parsed = V.assembleParsed(map, 3);
+  assert.equal(parsed.entries[0].endMs, 5000);
+  assert.equal(parsed.entries[1].systemEvent, true);
+  assert.equal(parsed.entries[2].speaker, 'B');
+});

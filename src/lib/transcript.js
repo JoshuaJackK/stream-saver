@@ -114,6 +114,10 @@
   /** WebVTT: ena replika na vrstico prepisa, govorec kot <v Ime>…</v>, brez združevanja. */
   function toVtt(parsed) {
     const cues = parsed.entries.map((e) => {
+      if (e.systemEvent) {
+        const note = fixEncoding(e.text).replace(/\n/g, ' ');
+        return 'NOTE\nSistemski dogodek brez časa: ' + note;
+      }
       const body = esc(fixEncoding(e.text));
       const line = e.speaker ? `<v ${esc(fixEncoding(e.speaker))}>${body}</v>` : body;
       return `${formatVttTime(e.startMs)} --> ${formatVttTime(e.endMs)}\n${line}`;
@@ -125,6 +129,7 @@
   function toTxt(parsed) {
     const lines = parsed.entries.map((e) => {
       const body = fixEncoding(e.text).replace(/\n/g, ' ');
+      if (e.systemEvent) return `[brez časa] Sistemski dogodek: ${body}`;
       return `[${formatTxtTime(e.startMs)}] ${e.speaker ? fixEncoding(e.speaker) + ': ' : ''}${body}`;
     });
     return '\uFEFF' + lines.join('\r\n') + (lines.length ? '\r\n' : '');

@@ -63,6 +63,18 @@
     return null;
   }
 
+
+  function hasEventTextClass(el) {
+    if (!el) return false;
+    if (el.classList && el.classList.length) {
+      for (const c of el.classList) {
+        if (c === 'eventText' || (typeof c === 'string' && c.indexOf('eventText-') === 0)) return true;
+      }
+    }
+    const cls = (el.getAttribute && el.getAttribute('class')) || '';
+    return /(?:^|\s)eventText(?:-|\s|$)/.test(cls);
+  }
+
   function textOf(el) {
     if (!el) return '';
     return String(el.textContent || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
@@ -130,6 +142,8 @@
       const text = textOf(sub);
       if (!text) continue;
 
+      const isEvent = hasEventTextClass(sub);
+
       let speaker = '';
       const header = wrap.querySelector && wrap.querySelector('[role="listitem"][class*="itemHeader-"]');
       if (header) {
@@ -142,21 +156,27 @@
       if (ts) timeMs = parseVisibleTime(textOf(ts));
       const ariaRaw = wrap.getAttribute && wrap.getAttribute('aria-label');
       const aria = parseAriaLabel(ariaRaw);
-      if (timeMs == null && aria) timeMs = aria.ms;
-      if (!speaker && aria) speaker = aria.speaker || '';
+      if (!isEvent) {
+        if (timeMs == null && aria) timeMs = aria.ms;
+        if (!speaker && aria) speaker = aria.speaker || '';
+      } else {
+        speaker = '';
+        timeMs = null;
+      }
 
       const prev = map.get(index);
-      if (prev && prev.text === text && prev.timeMs != null && timeMs == null) {
+      if (prev && prev.text === text && prev.timeMs != null && timeMs == null && !isEvent && !prev.event) {
         /* keep */
       } else {
         map.set(index, {
           index,
           text,
-          speaker: speaker || (prev && prev.speaker) || '',
-          timeMs: timeMs != null ? timeMs : (prev ? prev.timeMs : null),
+          speaker: isEvent ? '' : (speaker || (prev && prev.speaker) || ''),
+          timeMs: isEvent ? null : (timeMs != null ? timeMs : (prev ? prev.timeMs : null)),
           setSize: setSize != null ? setSize : (prev ? prev.setSize : null),
           ariaLabel: (typeof ariaRaw === 'string' && ariaRaw.trim()) ? ariaRaw.trim()
-            : (prev && prev.ariaLabel) || null
+            : (prev && prev.ariaLabel) || null,
+          event: isEvent || !!(prev && prev.event)
         });
       }
     }
@@ -189,9 +209,24 @@
     }
     let lastSpeaker = '';
     const entries = [];
+    let events = 0;
     for (let i = 0; i < total; i++) {
       const e = map.get(i);
       if (!e || !e.text) throw err('Manjka besedilo vrstice ' + i + '.', 'INCOMPLETE');
+      if (e.event) {
+        events++;
+        entries.push({
+          id: 'dom-' + i,
+          text: e.text,
+          speaker: '',
+          speakerId: '',
+          startMs: null,
+          endMs: null,
+          lang: '',
+          systemEvent: true
+        });
+        continue;
+      }
       if (e.timeMs == null || !Number.isFinite(e.timeMs)) {
         const ordinal = i + 1; // 1-based za uporabnika
         const raw = (e.ariaLabel && String(e.ariaLabel).trim()) || '';
@@ -223,19 +258,24 @@
         lang: ''
       });
     }
-    for (let i = 0; i < entries.length - 1; i++) {
-      const next = entries[i + 1].startMs;
-      if (next > entries[i].startMs) entries[i].endMs = next;
+    for (let i = 0; i < entries.length; i++) {
+      if (entries[i].systemEvent) continue;
+      let j = i + 1;
+      while (j < entries.length && entries[j].systemEvent) j++;
+      if (j < entries.length && Number.isFinite(entries[j].startMs) && entries[j].startMs > entries[i].startMs) {
+        entries[i].endMs = entries[j].startMs;
+      }
     }
-    if (entries.length) {
-      const last = entries[entries.length - 1];
-      if (last.endMs <= last.startMs) last.endMs = last.startMs + 1000;
+    for (let i = entries.length - 1; i >= 0; i--) {
+      if (entries[i].systemEvent) continue;
+      if (entries[i].endMs <= entries[i].startMs) entries[i].endMs = entries[i].startMs + 1000;
+      break;
     }
     const speakers = new Set();
     for (const e of entries) if (e.speaker) speakers.add(e.speaker);
     return {
       entries,
-      stats: { lines: entries.length, speakers: speakers.size, language: '', skippedEmpty: 0, skippedBadTime: 0 }
+      stats: { lines: entries.length, speakers: speakers.size, language: '', skippedEmpty: 0, skippedBadTime: 0, events: events }
     };
   }
 
@@ -611,7 +651,8 @@
     waitSettled,
     repairMissingHoles,
     setScrollTop,
-    textOf
+    textOf,
+    hasEventTextClass
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.SSVisibleTranscript = api;
