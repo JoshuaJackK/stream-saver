@@ -212,8 +212,8 @@ Od različice 1.1.0 (omrežje) oz. **1.2.1** (tudi viden DOM) lahko posnetku **l
 ### Kaj razširitev naredi in česa ne
 
 - **Omrežni način (starejši Stream):** shrani samo tisto, kar predvajalnik sam naloži za prikaz (`…/media/transcripts/<id>/streamContent?format=json…`). Razširitev **isti naslov** z istimi parametri in tvojimi piškotki prebere še enkrat.
-- **Viden prepis (novi Stream, od 1.2.1):** če omrežni JSON ni na voljo (ali ni berljiv), lahko ob **tvojem kliku** na **Preberi viden prepis** razširitev prebere besedilo, ki ga **že vidiš** v odprtem zavihku Prepis (samo `textContent` vrstic, brez `src`/`innerHTML`). Ne kliče gumba Prenesi, `format=vtt`/`docx` ali drugih prenostnih povezav in **ne dešifrira** morebitnih neberljivih omrežnih odgovorov.
-- Delnega prepisa ne shrani: če ne uspe prebrati vseh vrstic, javi napako.
+- **Viden prepis (novi Stream, od 1.2.1; popravek 1.2.3):** če omrežni JSON ni na voljo (ali ni berljiv), lahko ob **tvojem kliku** na **Preberi viden prepis** razširitev prebere besedilo, ki ga **že vidiš** v odprtem zavihku Prepis (samo `textContent` vrstic, brez `src`/`innerHTML`). Ne kliče gumba Prenesi, `format=vtt`/`docx` ali drugih prenostnih povezav in **ne dešifrira** morebitnih neberljivih omrežnih odgovorov. Od **1.2.3** se pri napaki v prednostnem okvirju (kjer je Prepis) ohrani **dejansko** sporočilo (npr. manjkajoči čas pri vrstici), ne generičnega »Nobeden okvir …«.
+- Delnega prepisa ne shrani: če ne uspe prebrati vseh vrstic ali časa, javi napako (brez ugibanja časov).
 - Deluje samo za posnetke, ki jih lahko sam gledaš, in samo za tvojo osebno uporabo. Ne deli prepisov naprej.
 
 ### Kako ga shraniš
@@ -241,6 +241,8 @@ V obeh oblikah: vrstice z praznim besedilom se izpustijo, nič se ne združuje (
 | *»Prepis še ni naložen prek omrežja …«* | Omrežni JSON ni zaznan. Odpri zavihek **Prepis** in uporabi **Preberi viden prepis**, ali osveži (F5). |
 | *»Ta posnetek nima prepisa (prepis je prazen).«* | Predvajalnik je prejel prepis brez vrstic. |
 | *»Prepisa ni bilo mogoče prebrati (HTTP …) …«* | Prijava je potekla ali strežnik odgovarja z napako: osveži stran (F5) in poskusi znova. |
+| *»Manjka čas za vrstico N …«* / *»Nepodprta oblika časa …«* | Po prebranem seznamu manjka ali ni prepoznan časovni žig (aria-label). Pošlji točno sporočilo (brez besedila predavanja); razširitev časov **ne izmišlja**. |
+| *»Nobeden okvir ni vrnil prepisa …«* | Zavihek Prepis ni bil najden v nobenem okvirju – odpri Prepis in poskusi znova. |
 
 ### Omejitve prepisa
 

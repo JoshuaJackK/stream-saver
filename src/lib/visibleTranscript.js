@@ -10,9 +10,10 @@
   const DEFAULT_MAX_ITERS = 4000;
   const ENTRY_SEL = '[data-testid="entryRenderer"]';
 
-  function err(msg, code) {
+  function err(msg, code, details) {
     const e = new Error(msg);
     if (code) e.code = code;
+    if (details != null) e.details = details;
     return e;
   }
 
@@ -115,7 +116,8 @@
       let timeMs = null;
       const ts = wrap.querySelector && wrap.querySelector('#Header-timestamp-' + index);
       if (ts) timeMs = parseVisibleTime(textOf(ts));
-      const aria = parseAriaLabel(wrap.getAttribute && wrap.getAttribute('aria-label'));
+      const ariaRaw = wrap.getAttribute && wrap.getAttribute('aria-label');
+      const aria = parseAriaLabel(ariaRaw);
       if (timeMs == null && aria) timeMs = aria.ms;
       if (!speaker && aria) speaker = aria.speaker || '';
 
@@ -128,7 +130,9 @@
           text,
           speaker: speaker || (prev && prev.speaker) || '',
           timeMs: timeMs != null ? timeMs : (prev ? prev.timeMs : null),
-          setSize: setSize != null ? setSize : (prev ? prev.setSize : null)
+          setSize: setSize != null ? setSize : (prev ? prev.setSize : null),
+          ariaLabel: (typeof ariaRaw === 'string' && ariaRaw.trim()) ? ariaRaw.trim()
+            : (prev && prev.ariaLabel) || null
         });
       }
     }
@@ -165,7 +169,23 @@
       const e = map.get(i);
       if (!e || !e.text) throw err('Manjka besedilo vrstice ' + i + '.', 'INCOMPLETE');
       if (e.timeMs == null || !Number.isFinite(e.timeMs)) {
-        throw err('Manjka čas za vrstico ' + i + ' – časa ne izmišljamo.', 'TIME');
+        const ordinal = i + 1; // 1-based za uporabnika
+        const raw = (e.ariaLabel && String(e.ariaLabel).trim()) || '';
+        // aria-label vsebuje govorca + čas (ne besedila predavanja) – varno za napako
+        if (raw && !parseAriaLabel(raw)) {
+          throw err(
+            'Nepodprta oblika časa pri vrstici ' + ordinal
+              + ' (aria-label: «' + raw + '»). Časa ne izmišljamo.',
+            'TIME_UNKNOWN',
+            { index: i, ordinal: ordinal, ariaLabel: raw }
+          );
+        }
+        throw err(
+          'Manjka čas za vrstico ' + ordinal + ' – časa ne izmišljamo.'
+            + (raw ? ' (aria-label: «' + raw + '»)' : ''),
+          'TIME',
+          { index: i, ordinal: ordinal, ariaLabel: raw || null }
+        );
       }
       if (e.speaker) lastSpeaker = e.speaker;
       else e.speaker = lastSpeaker;
@@ -395,6 +415,7 @@
         }
       }
 
+      report('Preverjam vseh ' + total + ' vrstic …');
       return assembleParsed(map, total);
     } finally {
       if (scrollEl) {

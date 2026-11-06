@@ -534,7 +534,12 @@
           return { ok: true, parsed };
         } catch (e) {
           visibleCollectCtrl = null;
-          return { ok: false, error: (e && e.message) || String(e) };
+          return {
+            ok: false,
+            error: (e && e.message) || String(e),
+            code: (e && e.code) || null,
+            details: (e && e.details) || null
+          };
         }
       })();
     }

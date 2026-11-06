@@ -125,7 +125,13 @@ browser.tabs.onUpdated.addListener((tabId, info) => {
   if (info.status === 'loading' && info.url) {
     if (SSGen.reset(tabId)) setBadge(tabId);
     const s = tabs.get(tabId);
-    if (s && !(s.job && s.job.status === 'running')) {
+    const videoRunning = !!(s && s.job && s.job.status === 'running');
+    const visibleRunning = !!(s && s.visibleJob && s.visibleJob.status === 'running');
+    if (visibleRunning) {
+      if (s.visibleJob.ctrl) try { s.visibleJob.ctrl.abort(); } catch (e) {}
+      s.visibleJob = null;
+    }
+    if (s && !videoRunning) {
       tabs.delete(tabId);
       setBadge(tabId);
       return;
@@ -231,8 +237,24 @@ function visibleJobSummary(j) {
     total: j.total || null,
     filename: j.filename || null,
     lines: j.lines || null,
-    error: j.error || null
+    error: j.error || null,
+    code: j.code || null,
+    details: j.details || null
   };
+}
+
+/** Okvir brez zavihka Prepis / brez poslušalca – smiselno poskusiti drug okvir. */
+function isAbsentPaneResult(r) {
+  if (!r) return true;
+  if (r.ok) return false;
+  const code = r.code || null;
+  if (code === 'NO_PANE' || code === 'NO_ROWS') return true;
+  // Če je koda napake iz zbiralnika (TIME, INCOMPLETE, …), pane je bil najden.
+  if (code) return false;
+  const msg = String(r.error || '');
+  if (/Zavihek Prepis ni odprt|ni vrstic|Modul za viden prepis ni naložen/i.test(msg)) return true;
+  if (/Receiving end does not exist|Could not establish connection/i.test(msg)) return true;
+  return false;
 }
 
 async function collectVisibleFromFrames(tabId, opts) {
@@ -248,21 +270,25 @@ async function collectVisibleFromFrames(tabId, opts) {
     try {
       return await browser.tabs.sendMessage(tabId, payload, { frameId });
     } catch (e) {
-      return { ok: false, error: e.message || String(e) };
+      return { ok: false, error: e.message || String(e), code: null };
     }
   };
+  // Prednostni okvir (kje je Prepis): ob ok:false z bogato napako NE poskušaj
+  // drugih okvirjev – sicer se TIME/INCOMPLETE prepiše z generičnim »Nobeden okvir…«.
   if (typeof prefer === 'number') {
     const r = await tryFrame(prefer);
     if (r && r.ok) return r;
+    if (r && !isAbsentPaneResult(r)) return r;
   }
   const candidates = [0];
   if (s && s.manifest && typeof s.manifest.frameId === 'number') candidates.push(s.manifest.frameId);
   if (s && s.page && typeof s.page.frameId === 'number') candidates.push(s.page.frameId);
-  let last = { ok: false, error: 'Nobeden okvir ni vrnil prepisa. Odpri zavihek Prepis in poskusi znova.' };
+  let last = { ok: false, error: 'Nobeden okvir ni vrnil prepisa. Odpri zavihek Prepis in poskusi znova.', code: 'NO_FRAME' };
   for (const id of [...new Set(candidates)]) {
     if (id === prefer) continue;
     const r = await tryFrame(id);
     if (r && r.ok) return r;
+    if (r && !isAbsentPaneResult(r)) return r; // prva bogata napaka – ne prepisuj z zadnjim generikom
     if (r && r.error) last = r;
   }
   return last;
@@ -308,7 +334,12 @@ function startVisibleTranscriptJob(tabId, opts) {
     try {
       const collected = await collectVisibleFromFrames(tabId, { timeoutMs: 90000, jobId });
       if (!s.visibleJob || s.visibleJob.jobId !== jobId) return; // preklicano/zamenjano
-      if (!collected || !collected.ok) throw new Error((collected && collected.error) || 'Vidnega prepisa ni bilo mogoče prebrati.');
+      if (!collected || !collected.ok) {
+        const ex = new Error((collected && collected.error) || 'Vidnega prepisa ni bilo mogoče prebrati.');
+        if (collected && collected.code) ex.code = collected.code;
+        if (collected && collected.details) ex.details = collected.details;
+        throw ex;
+      }
       if (ctrl && ctrl.signal.aborted) throw new Error('Prekinjeno.');
       s.visibleJob.message = 'Shranjujem prepis …';
       setBadge(tabId);
@@ -317,7 +348,8 @@ function startVisibleTranscriptJob(tabId, opts) {
       s.visibleJob = {
         status: 'done',
         message: 'Shranjeno: ' + saved.filename + ' (' + saved.lines + ' vrstic). Datoteka je med prenosi (Ctrl+Shift+Y).',
-        done: saved.lines, total: saved.lines, filename: saved.filename, lines: saved.lines, error: null, jobId
+        done: saved.lines, total: saved.lines, filename: saved.filename, lines: saved.lines,
+        error: null, code: null, details: null, jobId
       };
     } catch (e) {
       if (!s.visibleJob || s.visibleJob.jobId !== jobId) return;
@@ -326,7 +358,11 @@ function startVisibleTranscriptJob(tabId, opts) {
         message: e.message || String(e),
         done: (s.visibleJob && s.visibleJob.done) || 0,
         total: (s.visibleJob && s.visibleJob.total) || null,
-        filename: null, lines: null, error: e.message || String(e), jobId
+        filename: null, lines: null,
+        error: e.message || String(e),
+        code: e.code || null,
+        details: e.details || null,
+        jobId
       };
     }
     setBadge(tabId);

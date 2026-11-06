@@ -60,10 +60,17 @@ function render() {
   const trUsable = tr.state === 'ready' || tr.state === 'loading' || tr.state === 'error';
   PopupGen.hide();
   if (!s.detected && !(job && job.status) && !visibleAvailable(s) && PopupGen.render(trUsable)) { $('fallback').hidden = true; $('transcript').hidden = true; return; }
-  if (!s.detected && visibleAvailable(s) && !(job && job.status)) { showMain(true); $('form').hidden = true; $('fallback').hidden = true; $('transcript').hidden = false; }
+  const vis = visibleAvailable(s);
+  const vj = s.visibleJob;
+  if (!s.detected && (vis || (vj && vj.status)) && !(job && job.status)) {
+    showMain(true); $('form').hidden = true; $('fallback').hidden = true; $('transcript').hidden = false;
+  }
   $('fallback').hidden = !s.detected;
-  if ((s.detected || trUsable || visibleAvailable(s)) && !filled) { $('filename').value = s.title || 'posnetek'; filled = true; }
+  if ((s.detected || trUsable || vis) && !filled) { $('filename').value = s.title || 'posnetek'; filled = true; }
   renderTranscript(tr, trUsable, s);
+  if (vj && (vj.status === 'running' || vj.status === 'done' || vj.status === 'error')) {
+    $('transcript').hidden = false;
+  }
   if (job && job.status === 'running') {
     showMain(false); $('progress').hidden = false; $('cancel').hidden = false; $('again').hidden = true;
     const pct = job.total ? (job.done / job.total) * 100 : 0;

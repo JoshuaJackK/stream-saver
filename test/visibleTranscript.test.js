@@ -28,6 +28,10 @@ test('parseVisibleTime / parseAriaLabel', () => {
   assert.equal(V.parseVisibleTime('0:07'), 7000);
   assert.equal(V.parseVisibleTime('1:37:51'), 5871000);
   assert.deepEqual(V.parseAriaLabel('Ana Novak 0 min 7 s'), { speaker: 'Ana Novak', ms: 7000 });
+  assert.deepEqual(V.parseAriaLabel('Speaker 2 h 3 min 4 s'), { speaker: 'Speaker', ms: ((2 * 60 + 3) * 60 + 4) * 1000 });
+  assert.deepEqual(V.parseAriaLabel('Speaker 97 min 51 s'), { speaker: 'Speaker', ms: (97 * 60 + 51) * 1000 });
+  assert.deepEqual(V.parseAriaLabel('Speaker 12 s'), { speaker: 'Speaker', ms: 12000 });
+  assert.equal(V.parseAriaLabel('Speaker 2 ure 3 min'), null); // ne podpiramo brez preverjenega vzorca
 });
 
 test('harvest + assemble: govorec se prenese, popoln 0..n-1', () => {
@@ -49,7 +53,60 @@ test('harvest + assemble: govorec se prenese, popoln 0..n-1', () => {
 test('assemble: manjkajoči indeks / čas', () => {
   const doc = makeDoc(entryHtml(0, 3, 'a', { sec: 1 }) + entryHtml(2, 3, 'c', { sec: 3 }));
   assert.throws(() => V.assembleParsed(V.harvestMounted(doc, new Map()), 3), /Manjkajo indeksi/);
-  assert.throws(() => V.assembleParsed(new Map([[0, { index: 0, text: 'x', speaker: '', timeMs: null, setSize: 1 }]]), 1), /Manjka čas/);
+  assert.throws(() => V.assembleParsed(new Map([[0, { index: 0, text: 'x', speaker: '', timeMs: null, setSize: 1 }]]), 1), /Manjka čas za vrstico 1/);
+});
+
+test('assemble TIME: 1-based + aria-label; TIME_UNKNOWN pri neznani obliki', () => {
+  try {
+    V.assembleParsed(new Map([[0, {
+      index: 0, text: 'x', speaker: 'Ana', timeMs: null, setSize: 1, ariaLabel: 'Ana 5 min 0 s'
+    }]]), 1);
+    assert.fail('pričakovana TIME');
+  } catch (e) {
+    assert.equal(e.code, 'TIME');
+    assert.match(e.message, /vrstico 1/);
+    assert.match(e.message, /Ana 5 min 0 s/);
+    assert.equal(e.details.ordinal, 1);
+    assert.equal(e.details.index, 0);
+  }
+  const map = new Map();
+  for (let i = 0; i < 5; i++) {
+    map.set(i, {
+      index: i, text: 't' + i, speaker: 'G', timeMs: i === 4 ? null : i * 1000, setSize: 5,
+      ariaLabel: i === 4 ? 'G 2 ure 15 minut' : ('G ' + i + ' s')
+    });
+  }
+  try {
+    V.assembleParsed(map, 5);
+    assert.fail('pričakovana TIME_UNKNOWN');
+  } catch (e) {
+    assert.equal(e.code, 'TIME_UNKNOWN');
+    assert.match(e.message, /vrstici 5/);
+    assert.match(e.message, /2 ure 15 minut/);
+    assert.equal(e.details.ordinal, 5);
+    assert.equal(e.details.index, 4);
+  }
+});
+
+test('collect: po polnem map.size napredek Preverjam (ne »zbrano«)', async () => {
+  const total = 3;
+  const { JSDOM } = require('jsdom');
+  const html = Array.from({ length: total }, (_, i) =>
+    entryHtml(i, total, 'V' + i, { speaker: 'A', showHeader: i === 0, showTs: i === 0, sec: i * 2 })
+  ).join('');
+  const dom = new JSDOM(`<!doctype html><html><body>
+    <div role="complementary" aria-label="Prepis"><div id="scroller" style="overflow-y:scroll;height:200px;">${html}</div></div>
+  </body></html>`, { pretendToBeVisual: true });
+  const doc = dom.window.document;
+  const scroller = doc.getElementById('scroller');
+  Object.defineProperty(scroller, 'clientHeight', { get: () => 200, configurable: true });
+  Object.defineProperty(scroller, 'scrollHeight', { get: () => 200, configurable: true });
+  const msgs = [];
+  await V.collectVisibleTranscript(doc, {
+    timeoutMs: 5000, waitMs: 5, scrollEl: scroller, maxIters: 50,
+    onProgress: (p) => msgs.push(p.message || '')
+  });
+  assert.ok(msgs.some((m) => /Preverjam vseh 3 vrstic/.test(m)), 'msgs=' + JSON.stringify(msgs));
 });
 
 test('LEGACY planScroll: pri luknji na začetku skoči nazaj (dokaz nihanja)', () => {
@@ -81,10 +138,11 @@ test('MONOTONIC planScroll: nikoli nazaj', () => {
     const plan = V.planScrollMonotonic(top, maxScroll, 400);
     assert.ok(plan.top + 0.01 >= top, 'monoton: ' + top + ' -> ' + plan.top);
     tops.push(plan.top);
+    if (plan.mode === 'bottom' || plan.top >= maxScroll) { top = plan.top; break; }
     top = plan.top;
-    if (plan.mode === 'bottom') break;
   }
   assert.equal(top, maxScroll);
+  assert.ok(tops.every((t, i) => i === 0 || t >= tops[i - 1]), 'monotone non-decreasing');
 });
 
 test('collectVisibleTranscript: virtualni seznam z eviction – monoton, obnovi scroll, vsi indeksi', async () => {
