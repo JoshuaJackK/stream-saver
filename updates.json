@@ -36,6 +36,11 @@
           "version": "1.2.5",
           "update_link": "https://github.com/JoshuaJackK/stream-saver/releases/download/v1.2.5/stream-saver-1.2.5.xpi",
           "update_hash": "sha256:effff4e67619a89a2d6a5ba0320c2c936f5fc0a5af1fe46b769c410b32477ace"
+        },
+        {
+          "version": "1.2.7",
+          "update_link": "https://github.com/JoshuaJackK/stream-saver/releases/download/v1.2.7/stream-saver-1.2.7.xpi",
+          "update_hash": "sha256:acc06894a4fc7dacaa09d20de0605e9bbebd0971e786e4588dc36c5f2e01a2f8"
         }
       ]
     }
