@@ -43,9 +43,56 @@ test('parseVisibleTime / parseAriaLabel', () => {
   assert.deepEqual(V.parseAriaLabel('Speaker 0 min'), { speaker: 'Speaker', ms: 0 });
   assert.deepEqual(V.parseAriaLabel('Speaker 1 ura 12 s'), { speaker: 'Speaker', ms: 3612000 });
   assert.deepEqual(V.parseAriaLabel('Speaker 1 h 12 s'), { speaker: 'Speaker', ms: 3612000 });
-  assert.equal(V.parseAriaLabel('Speaker 2 ure 3 min'), null); // množina "ure" ni preverjena
-  assert.equal(V.parseAriaLabel('Speaker 2 h'), null); // brez minut
   assert.equal(V.parseAriaLabel('Speaker 1 ura 70 min'), null); // minute > 59
+});
+
+test('parseAriaLabel: samo ure (»N h«) in sklanjane / angleške enote', () => {
+  // Resnična napaka 1.2.8 (predavanje 16:00–20:00, vrstica 722): točno 2:00:00.
+  assert.deepEqual(V.parseAriaLabel('LJ - Sejna soba 2 h'), { speaker: 'LJ - Sejna soba', ms: 7200000 });
+  assert.deepEqual(V.parseAriaLabel('Speaker 2 h'), { speaker: 'Speaker', ms: 7200000 });
+  assert.deepEqual(V.parseAriaLabel('Speaker 1 ura'), { speaker: 'Speaker', ms: 3600000 });
+  assert.deepEqual(V.parseAriaLabel('Speaker 2 uri'), { speaker: 'Speaker', ms: 7200000 });
+  assert.deepEqual(V.parseAriaLabel('Speaker 3 ure 5 minut'), { speaker: 'Speaker', ms: (3 * 3600 + 300) * 1000 });
+  assert.deepEqual(V.parseAriaLabel('Speaker 2 ure 3 min'), { speaker: 'Speaker', ms: (2 * 3600 + 180) * 1000 });
+  assert.deepEqual(V.parseAriaLabel('Speaker 5 ur 1 minuta 2 sekundi'), { speaker: 'Speaker', ms: (5 * 3600 + 62) * 1000 });
+  assert.deepEqual(V.parseAriaLabel('Speaker 2 minuti 3 sekunde'), { speaker: 'Speaker', ms: 123000 });
+  assert.deepEqual(V.parseAriaLabel('Speaker 1 hour 2 minutes 3 seconds'), { speaker: 'Speaker', ms: 3723000 });
+  assert.deepEqual(V.parseAriaLabel('Speaker 2 hours'), { speaker: 'Speaker', ms: 7200000 });
+  assert.deepEqual(V.parseAriaLabel('Speaker 2h 41min 17s'), { speaker: 'Speaker', ms: 9677000 });
+  assert.deepEqual(V.parseAriaLabel('LJ - Sejna soba 2 h 0 min 5 s'), { speaker: 'LJ - Sejna soba', ms: 7205000 });
+  // Število v imenu govorca ostane v imenu.
+  assert.deepEqual(V.parseAriaLabel('Sejna soba 2 16 min'), { speaker: 'Sejna soba 2', ms: 960000 });
+  assert.deepEqual(V.parseAriaLabel('Sejna soba 2 1 h 3 s'), { speaker: 'Sejna soba 2', ms: 3603000 });
+  // Nikoli ne izmišljamo: brez časa, napačen vrstni red, podvojene enote, prazen govorec.
+  assert.equal(V.parseAriaLabel('LJ - Sejna soba'), null);
+  assert.equal(V.parseAriaLabel('Sejna soba 2'), null);
+  assert.equal(V.parseAriaLabel('Speaker 3 min 2 h'), null);
+  assert.equal(V.parseAriaLabel('Speaker 2 h 3 h'), null);
+  assert.equal(V.parseAriaLabel('2 h'), null);
+  assert.equal(V.parseAriaLabel('Speaker 2 h 3 min 70 s'), null);
+  assert.equal(V.parseAriaLabel(''), null);
+});
+
+test('assemble: predavanje čez 2 uri z »N h« vrstico (regresija 1.2.8)', () => {
+  const labels = [
+    ['LJ - Sejna soba 1 h 59 min 58 s', 7198000],
+    ['LJ - Sejna soba 2 h', 7200000],
+    ['LJ - Sejna soba 2 h 7 s', 7207000],
+    ['LJ - Sejna soba 2 h 1 min', 7260000],
+    ['LJ - Sejna soba 3 h 59 min 59 s', 14399000]
+  ];
+  const total = labels.length;
+  const html = labels.map(([aria], i) =>
+    `<div data-testid="entryRenderer"><div id="entry-${i}" role="group" aria-label="${aria}"><div id="sub-entry-${i}" role="listitem" class="entryText-x" aria-posinset="${i + 1}" aria-setsize="${total}">t${i}</div></div></div>`
+  ).join('');
+  const doc = makeDoc(`<div role="complementary" aria-label="Prepis">${html}</div>`);
+  const map = V.harvestMounted(V.findTranscriptRoot(doc), new Map());
+  const parsed = V.assembleParsed(map, total);
+  assert.equal(parsed.stats.lines, total);
+  parsed.entries.forEach((e, i) => {
+    assert.equal(e.startMs, labels[i][1]);
+    assert.equal(e.speaker, 'LJ - Sejna soba');
+  });
 });
 
 test('harvest + assemble: govorec se prenese, popoln 0..n-1', () => {
@@ -87,7 +134,7 @@ test('assemble TIME: 1-based + aria-label; TIME_UNKNOWN pri neznani obliki', () 
   for (let i = 0; i < 5; i++) {
     map.set(i, {
       index: i, text: 't' + i, speaker: 'G', timeMs: i === 4 ? null : i * 1000, setSize: 5,
-      ariaLabel: i === 4 ? 'G 2 ure 15 minut' : ('G ' + i + ' s')
+      ariaLabel: i === 4 ? 'G pred dvema urama' : ('G ' + i + ' s')
     });
   }
   try {
@@ -96,7 +143,7 @@ test('assemble TIME: 1-based + aria-label; TIME_UNKNOWN pri neznani obliki', () 
   } catch (e) {
     assert.equal(e.code, 'TIME_UNKNOWN');
     assert.match(e.message, /vrstici 5/);
-    assert.match(e.message, /2 ure 15 minut/);
+    assert.match(e.message, /pred dvema urama/);
     assert.equal(e.details.ordinal, 5);
     assert.equal(e.details.index, 4);
   }

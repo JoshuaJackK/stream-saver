@@ -27,40 +27,64 @@
     return null;
   }
 
+  // Enote časa na koncu aria-labela (SL in EN oblike). Stream izpusti ničelne dele:
+  // preverjeno »N h S s« (brez min), »N min« (brez s); zato tudi »N h« (točno N ur, npr. 2:00:00).
+  const UNIT_RE = {
+    h: /^(?:h|ura|uri|ure|ur|hr|hrs|hour|hours)$/i,
+    min: /^(?:min|minuta|minuti|minute|minut|minutes?)$/i,
+    s: /^(?:s|sek|sekunda|sekundi|sekunde|sekund|sec|secs|seconds?)$/i
+  };
+  const UNIT_RANK = { h: 3, min: 2, s: 1 };
+  function unitOf(word) {
+    const w = String(word).replace(/\.$/, '');
+    for (const k of ['h', 'min', 's']) if (UNIT_RE[k].test(w)) return k;
+    return null;
+  }
+
+  /**
+   * Razbije »<govorec> <čas>«, kjer je čas zaporedje parov »število enota« na koncu
+   * (ure > minute > sekunde, vsaka največ enkrat, padajoče). Nikoli ne izmišlja časa:
+   * vse, česar ni mogoče jednoznačno prebrati, vrne null.
+   */
   function parseAriaLabel(label) {
     if (typeof label !== 'string') return null;
-    const s = label.trim();
-    // Preverjene oblike:
-    // "… N h|ura M min [S s]", "… N h|ura S s", "… N min S s", "… N min", "… N s".
-    // Enote h|ura (ne "ure"/"ur"/"hour"). Minute z uro: 0–59; samostojne minute so lahko >59.
-    let m = /^(.*?)\s+(\d+)\s*(?:h|ura)\s+(\d+)\s*min(?:\s+(\d+)\s*s)?\s*$/i.exec(s);
-    if (m) {
-      const hours = +m[2], mins = +m[3], secs = m[4] != null ? +m[4] : 0;
-      if (mins > 59 || secs > 59) return null;
-      return { speaker: m[1].trim(), ms: ((hours * 60 + mins) * 60 + secs) * 1000 };
+    const s = label.replace(/\u00a0/g, ' ').trim();
+    if (!s) return null;
+    // Žetoni; »2h« / »41min« razbijemo na število + enoto.
+    const tokens = s.split(/\s+/);
+    const pairs = [];
+    let i = tokens.length;
+    while (i > 0) {
+      const t = tokens[i - 1];
+      let num = null, unit = null, used = 0;
+      const glued = /^(\d+)([a-zA-Zčšž.]+)$/i.exec(t);
+      if (glued && unitOf(glued[2])) {
+        num = +glued[1]; unit = unitOf(glued[2]); used = 1;
+      } else if (i >= 2 && unitOf(t) && /^\d+$/.test(tokens[i - 2])) {
+        num = +tokens[i - 2]; unit = unitOf(t); used = 2;
+      }
+      if (unit == null) break;
+      pairs.unshift({ num, unit });
+      i -= used;
     }
-    m = /^(.*?)\s+(\d+)\s*(?:h|ura)\s+(\d+)\s*s\s*$/i.exec(s);
-    if (m) {
-      const secs = +m[3];
-      if (secs > 59) return null;
-      return { speaker: m[1].trim(), ms: (+m[2] * 3600 + secs) * 1000 };
+    if (!pairs.length) return null;
+    // Vrstni red: strogo padajoče enote (h → min → s), brez podvajanja.
+    for (let k = 1; k < pairs.length; k++) {
+      if (UNIT_RANK[pairs[k].unit] >= UNIT_RANK[pairs[k - 1].unit]) return null;
     }
-    m = /^(.*?)\s+(\d+)\s*min\s+(\d+)\s*s\s*$/i.exec(s);
-    if (m) {
-      const secs = +m[3];
-      if (secs > 59) return null;
-      return { speaker: m[1].trim(), ms: (+m[2] * 60 + secs) * 1000 };
+    const speaker = tokens.slice(0, i).join(' ').trim();
+    if (!speaker) return null;
+    let h = 0, mi = 0, se = 0;
+    for (const p of pairs) {
+      if (p.unit === 'h') h = p.num;
+      else if (p.unit === 'min') mi = p.num;
+      else se = p.num;
     }
-    m = /^(.*?)\s+(\d+)\s*min\s*$/i.exec(s);
-    if (m) {
-      const speaker = m[1].trim();
-      // Ne požri nepreverjenih oblik tipa "… 2 ure 3 min" (množina / tuje enote).
-      if (/\d+\s+\S+$/i.test(speaker)) return null;
-      return { speaker, ms: (+m[2] * 60) * 1000 };
-    }
-    m = /^(.*?)\s+(\d+)\s*s\s*$/i.exec(s);
-    if (m) return { speaker: m[1].trim(), ms: (+m[2]) * 1000 };
-    return null;
+    const top = pairs[0].unit;
+    // Pod višjo enoto morajo biti nižje 0–59; samostojne minute/sekunde so lahko > 59.
+    if (top !== 'min' && top !== 's' && mi > 59) return null;
+    if (top !== 's' && se > 59) return null;
+    return { speaker, ms: ((h * 60 + mi) * 60 + se) * 1000 };
   }
 
 
