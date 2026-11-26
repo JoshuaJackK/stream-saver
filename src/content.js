@@ -10,7 +10,18 @@
   window.__streamSaverLoaded = true;
 
   const page = window.wrappedJSObject || window;
+  let mainBridge = {};
   let lastSent = '';
+  window.addEventListener('message', (ev) => {
+    if (ev.source !== window || !ev.data || ev.data.__streamSaverMainData !== true) return;
+    if (Array.isArray(ev.data.key) && ev.data.key.length === 16) {
+      mainBridge.key = ev.data.key;
+      mainBridge.iv = Array.isArray(ev.data.iv) && ev.data.iv.length === 16 ? ev.data.iv : null;
+    }
+    if (ev.data.fileName) mainBridge.fileName = String(ev.data.fileName);
+    tick();
+  });
+  try { window.postMessage({ __streamSaverMainPing: true }, '*'); } catch (e) { /* ignore */ }
   let uiState = null;
   let visibleCollectCtrl = null;
   let localDetected = false;
@@ -51,6 +62,8 @@
         if (n) info.fileName = String(n).replace(/\.(mp4|mov|m4v|webm)$/i, '');
       }
     } catch (e) { /* ignore */ }
+    if (!info.key && mainBridge.key) { info.key = mainBridge.key; info.iv = mainBridge.iv || null; }
+    if (!info.fileName && mainBridge.fileName) info.fileName = mainBridge.fileName;
     try {
       const v = document.querySelector('video');
       if (v && isFinite(v.duration) && v.duration > 0) info.duration = v.duration;
@@ -95,7 +108,7 @@
   function isPlayerFrame() {
     const u = location.href || '';
     if (/stream\.aspx|_layouts\/15\/(stream|embed|VideoPlay)|\/:v:\//i.test(u)) return true;
-    if (/sharepoint\.com/i.test(u) && (document.querySelector('video') || page.g_fileInfo || page.g_streamBootstrapContent)) return true;
+    if (/sharepoint\.com/i.test(u) && (document.querySelector('video') || page.g_fileInfo || page.g_streamBootstrapContent || mainBridge.fileName || mainBridge.key)) return true;
     // Teams shell: only show if we ourselves saw media requests (player is often in iframe).
     if (/teams\.microsoft\.com|teams\.cloud\.microsoft/i.test(u)) {
       try {
@@ -365,7 +378,8 @@
       const r = await browser.runtime.sendMessage({ type: 'ss-save-transcript', options: { filename, subfolder, format, saveAs: false } });
       if (r && r.ok) {
         els.trMsg.className = 'status ok';
-        els.trMsg.textContent = `Shranjeno kot: ${r.filename} (${r.lines} vrstic). Datoteka je med prenosi v Firefoxu (Ctrl+Shift+Y).`;
+        const dlHint = typeof SSCompat !== 'undefined' ? `${SSCompat.browserName} (${SSCompat.downloadsShortcut})` : 'Firefoxu (Ctrl+Shift+Y)';
+        els.trMsg.textContent = `Shranjeno kot: ${r.filename} (${r.lines} vrstic). Datoteka je med prenosi v ${dlHint}.`;
       } else {
         els.trMsg.className = 'status err';
         els.trMsg.textContent = 'Napaka: ' + ((r && r.error) || 'neznana napaka');
@@ -421,7 +435,7 @@
       badge = 'OK';
       els.bar.hidden = false;
       els.fill.style.width = '100%';
-      statusText = (job.warning ? job.warning + ' ' : '') + (job.message || 'Shranjeno med prenosi v Firefoxu (Ctrl+Shift+Y).');
+      statusText = (job.warning ? job.warning + ' ' : '') + (job.message || `Shranjeno med prenosi v ${typeof SSCompat !== 'undefined' ? `${SSCompat.browserName} (${SSCompat.downloadsShortcut})` : 'Firefoxu (Ctrl+Shift+Y)'}.`);
       statusCls = job.warning ? 'err' : 'ok';
       els.start.hidden = true;
       els.cancel.hidden = true;
@@ -501,7 +515,8 @@
         try {
           const r = await pageFetch(msg.url, { credentials: 'include', headers: msg.headers || {}, cache: 'no-store' });
           const ok = r.status >= 200 && r.status < 300;
-          return { status: r.status, retryAfter: r.headers.get('Retry-After'), buffer: ok ? await r.arrayBuffer() : null };
+          const res = { status: r.status, retryAfter: r.headers.get('Retry-After'), buffer: ok ? await r.arrayBuffer() : null };
+          return typeof SSCompat !== 'undefined' ? SSCompat.encodeFetchResult(res) : res;
         } catch (e) {
           return { status: 0, retryAfter: null, buffer: null, error: String(e && e.message || e) };
         }

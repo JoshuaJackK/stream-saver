@@ -41,7 +41,7 @@ const PopupGen = (() => {
       $('progressText').textContent = running ? `${pct.toFixed(1)} % · ${job.done}/${job.total} · ${ctx.fmtMB(job.bytes || 0)}${eta}` : (job.status === 'done' ? `Shranjeno kot: ${job.filename}` : '');
       $('progressMsg').textContent = [job.warning].concat(job.notes || []).filter(Boolean).join(' ') + ' ' + (job.message || '');
       if (running) ctx.setStatus('Prenašam: ' + job.filename, '');
-      else if (job.status === 'done') ctx.setStatus('Prenos končan. Datoteko najdeš med prenosi v Firefoxu (Ctrl+Shift+Y).', 'ok');
+      else if (job.status === 'done') ctx.setStatus(`Prenos končan. Datoteko najdeš med prenosi v ${typeof SSCompat !== 'undefined' ? `${SSCompat.browserName} (${SSCompat.downloadsShortcut})` : 'Firefoxu (Ctrl+Shift+Y)'}.`, 'ok');
       else if (job.status === 'cancelled') ctx.setStatus('Prenos je bil preklican.', 'warn');
       else ctx.setStatus('Napaka: ' + (job.error || 'neznana napaka') + (job.drm ? '' : ' Uporabiš lahko ukaza ffmpeg / yt-dlp spodaj.'), 'err');
       if (!running && job.status === 'error' && !job.drm) { $('genForm').hidden = false; $('genForm').classList.remove('empty'); }

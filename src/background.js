@@ -17,6 +17,60 @@ function tabState(tabId) {
 function hasDetection(s) { return !!(s && (s.manifest || Object.keys(s.transcode).length)); }
 function hasTranscript(s) { return !!(s && s.transcript && (s.transcript.status === 'ready' || s.transcript.status === 'loading')); }
 
+function createBlobUrl(blob) {
+  if (typeof SSBlob !== 'undefined' && SSBlob.createObjectURL) return SSBlob.createObjectURL(blob);
+  return Promise.resolve(URL.createObjectURL(blob));
+}
+function revokeBlobUrl(url) {
+  if (!url) return;
+  if (typeof SSBlob !== 'undefined' && SSBlob.revokeObjectURL) { SSBlob.revokeObjectURL(url); return; }
+  try { URL.revokeObjectURL(url); } catch (e) { /* ignore */ }
+}
+
+// Chrome MV3 Service Worker: hrani zaznano stanje zavihkov v storage.session, da preživi uspavanje SW.
+const HAS_SESSION = !!(typeof browser !== 'undefined' && browser.storage && browser.storage.session);
+let persistTimer = null;
+function persistSession() {
+  if (!HAS_SESSION) return;
+  if (persistTimer) return;
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    try {
+      const snap = {};
+      for (const [tid, s] of tabs.entries()) {
+        snap[String(tid)] = {
+          manifest: s.manifest || null,
+          manifestMeta: s.manifestMeta || null,
+          transcode: s.transcode || {},
+          transcodeFrameId: s.transcodeFrameId,
+          encrypted: !!s.encrypted,
+          page: s.page || null,
+          visiblePane: s.visiblePane || null,
+          transcript: s.transcript ? {
+            url: s.transcript.url, transcriptId: s.transcript.transcriptId, frameId: s.transcript.frameId,
+            documentUrl: s.transcript.documentUrl || null, time: s.transcript.time,
+            status: s.transcript.status === 'loading' ? 'loading' : s.transcript.status,
+            parsed: s.transcript.parsed || null, error: s.transcript.error || null,
+            http: s.transcript.http || null, tabUrl: s.transcript.tabUrl || null,
+            fetching: false, lastAttempt: s.transcript.lastAttempt || 0
+          } : null
+        };
+      }
+      browser.storage.session.set({ ss_tabs: snap, ss_lastMediaTab: lastMediaTab }).catch(() => {});
+    } catch (e) { /* ignore */ }
+  }, 200);
+}
+const sessionReady = HAS_SESSION ? browser.storage.session.get(['ss_tabs', 'ss_lastMediaTab']).then((res) => {
+  if (!res) return;
+  if (res.ss_lastMediaTab != null && lastMediaTab === null) lastMediaTab = res.ss_lastMediaTab;
+  const snap = res.ss_tabs || {};
+  for (const [k, v] of Object.entries(snap)) {
+    const tid = Number(k);
+    if (!Number.isFinite(tid) || tabs.has(tid)) continue;
+    tabs.set(tid, Object.assign({ manifest: null, transcode: {}, encrypted: false, page: null, job: null }, v));
+  }
+}).catch(() => {}) : Promise.resolve();
+
 // ---------------- badge ----------------
 function setBadge(tabId) {
   const s = tabs.get(tabId);
@@ -43,6 +97,7 @@ function setBadge(tabId) {
   browser.browserAction.setBadgeBackgroundColor({ tabId, color }).catch(() => {});
   browser.browserAction.setTitle({ tabId, title }).catch(() => {});
   notifyTab(tabId);
+  persistSession();
 }
 
 /** Push current summary to all frames in the tab (for the on-page floating button). */
@@ -63,8 +118,8 @@ function headerValue(headers, name) {
   return h ? h.value : null;
 }
 function fromExtension(d) {
-  const o = d.originUrl || d.documentUrl || '';
-  return o.startsWith('moz-extension:');
+  const o = d.initiator || d.originUrl || d.documentUrl || '';
+  return o.startsWith('moz-extension:') || o.startsWith('chrome-extension:');
 }
 
 function onRequest(d) {
@@ -85,7 +140,7 @@ function onRequest(d) {
   if (isManifest) {
     if (/tempauth/i.test(d.url) && s.manifest) return;
     const tok = headerValue(d.requestHeaders, 'x-spopactoken');
-    s.manifest = { url: d.url, frameId: d.frameId, time: Date.now(), spopactoken: tok || (s.manifest && s.manifest.spopactoken) || null, documentUrl: d.documentUrl || null };
+    s.manifest = { url: d.url, frameId: d.frameId, time: Date.now(), spopactoken: tok || (s.manifest && s.manifest.spopactoken) || null, documentUrl: d.documentUrl || d.initiator || null };
     LOG('videomanifest zaznan', tabId, url.host);
     probeManifestMeta(tabId, s);
   } else {
@@ -119,6 +174,7 @@ browser.tabs.onRemoved.addListener((tabId) => {
   const s = tabs.get(tabId);
   if (!s || !s.job || s.job.status !== 'running') tabs.delete(tabId);
   if (lastMediaTab === tabId) lastMediaTab = null;
+  persistSession();
 });
 function stripHash(u) { return String(u || '').split('#')[0]; }
 browser.tabs.onUpdated.addListener((tabId, info) => {
@@ -161,7 +217,7 @@ function onTranscriptRequest(d, m) {
     return;
   }
   const t = {
-    url: d.url, transcriptId: m.transcriptId, frameId: d.frameId, documentUrl: d.documentUrl || null, time: Date.now(),
+    url: d.url, transcriptId: m.transcriptId, frameId: d.frameId, documentUrl: d.documentUrl || d.initiator || null, time: Date.now(),
     status: 'loading', parsed: null, error: null, http: null, tabUrl: null, fetching: false, lastAttempt: 0, promise: null
   };
   s.transcript = t;
@@ -305,12 +361,12 @@ async function saveVisibleTranscriptFile(tabId, parsed, opts) {
   const meta = transcriptExportMeta(s, tab);
   const content = fmt === 'vtt' ? SSTranscript.toVtt(parsed, meta) : SSTranscript.toTxt(parsed, meta);
   const blob = new Blob([content], { type: f.mime });
-  const url = URL.createObjectURL(blob);
+  const url = await createBlobUrl(blob);
   let downloadId;
   try {
     downloadId = await browser.downloads.download({ url, filename, saveAs: !!opts.saveAs, conflictAction: 'uniquify' });
   } catch (e) {
-    URL.revokeObjectURL(url);
+    revokeBlobUrl(url);
     throw new Error('Shranjevanje ni uspelo: ' + e.message);
   }
   pendingDownloads.set(downloadId, { url, sink: null });
@@ -404,12 +460,12 @@ async function saveTranscript(tabId, opts) {
   const meta = transcriptExportMeta(s, tab);
   const content = fmt === 'vtt' ? SSTranscript.toVtt(t.parsed, meta) : SSTranscript.toTxt(t.parsed, meta);
   const blob = new Blob([content], { type: f.mime });
-  const url = URL.createObjectURL(blob);
+  const url = await createBlobUrl(blob);
   let downloadId;
   try {
     downloadId = await browser.downloads.download({ url, filename, saveAs: !!opts.saveAs, conflictAction: 'uniquify' });
   } catch (e) {
-    URL.revokeObjectURL(url);
+    revokeBlobUrl(url);
     throw new Error('Shranjevanje ni uspelo: ' + e.message);
   }
   pendingDownloads.set(downloadId, { url, sink: null });
@@ -430,7 +486,8 @@ async function frameFetch(tabId, frameId, url, opts, spopactoken) {
   const headers = {};
   if (opts && opts.range) headers.Range = 'bytes=' + opts.range;
   if (spopactoken && /\.svc\.ms/i.test(new URL(url).host)) headers['x-spopactoken'] = spopactoken;
-  const r = await browser.tabs.sendMessage(tabId, { type: 'ss-fetch', url, headers }, { frameId: frameId || 0 });
+  const raw = await browser.tabs.sendMessage(tabId, { type: 'ss-fetch', url, headers }, { frameId: frameId || 0 });
+  const r = typeof SSCompat !== 'undefined' ? SSCompat.decodeFetchResult(raw) : raw;
   if (!r) throw new Error('Okvir predvajalnika se ne odziva (osveži stran).');
   if (r.error) throw new Error(r.error);
   return r;
@@ -602,6 +659,7 @@ async function startJob(tabId, opts) {
   setBadge(tabId);
   let sink = null;
   let lastBadge = 0;
+  if (typeof SSBlob !== 'undefined' && SSBlob.beginKeepAlive) await SSBlob.beginKeepAlive();
   try {
     const fetcher = makeFetcher(tabId, s);
     const resolved = await resolveTracks(tabId, s, fetcher, mode);
@@ -644,12 +702,12 @@ async function startJob(tabId, opts) {
       job.remuxWarning = 'Datoteka je ostala fragmentirana; VLC morda ne bo predvajal zvoka. Pretvori z: ffmpeg -i vhod.mp4 -c copy -movflags +faststart izhod.mp4';
     }
     job.message = 'Shranjujem datoteko …';
-    const url = URL.createObjectURL(blob);
+    const url = await createBlobUrl(blob);
     let downloadId;
     try {
       downloadId = await browser.downloads.download({ url, filename, saveAs: !!opts.saveAs, conflictAction: 'uniquify' });
     } catch (e) {
-      URL.revokeObjectURL(url);
+      revokeBlobUrl(url);
       throw new Error('Shranjevanje ni uspelo: ' + e.message);
     }
     pendingDownloads.set(downloadId, { url, sink });
@@ -663,6 +721,7 @@ async function startJob(tabId, opts) {
     job.message = job.error;
     if (sink) await sink.abort();
   } finally {
+    if (typeof SSBlob !== 'undefined' && SSBlob.endKeepAlive) SSBlob.endKeepAlive();
     delete job.ctrl;
     setBadge(tabId);
   }
@@ -674,7 +733,7 @@ browser.downloads.onChanged.addListener((delta) => {
   if (!p || !delta.state) return;
   if (delta.state.current === 'complete' || delta.state.current === 'interrupted') {
     pendingDownloads.delete(delta.id);
-    setTimeout(() => { URL.revokeObjectURL(p.url); if (p.sink) p.sink.cleanup(); }, 5000);
+    setTimeout(() => { revokeBlobUrl(p.url); if (p.sink) p.sink.cleanup(); }, 5000);
   }
 });
 
@@ -720,7 +779,7 @@ function summary(tabId, tab) {
 }
 
 browser.runtime.onMessage.addListener((msg, sender) => {
-  if (!msg || !msg.type) return undefined;
+  if (!msg || !msg.type || msg.target === 'ss-offscreen') return undefined;
   if (String(msg.type).startsWith('ss-g-')) return SSGen.onMessage(msg, sender);
   if (msg.type === 'ss-page' && sender.tab) {
     const s = tabState(sender.tab.id);
@@ -799,20 +858,22 @@ browser.runtime.onMessage.addListener((msg, sender) => {
   if (msg.type === 'ss-state') {
     const tabId = msg.tabId != null ? msg.tabId : (sender.tab && sender.tab.id);
     if (tabId == null) return Promise.resolve(summary(-1, null));
-    return browser.tabs.get(tabId).then((tab) => summary(tabId, tab), () => summary(tabId, null));
+    return sessionReady.then(() => browser.tabs.get(tabId).then((tab) => summary(tabId, tab), () => summary(tabId, null)));
   }
   if (msg.type === 'ss-start') {
     const tabId = msg.tabId != null ? msg.tabId : (sender.tab && sender.tab.id);
-    startJob(tabId, msg.options || {}).catch((e) => {
-      const s = tabState(tabId);
-      s.job = { status: 'error', error: e.message, message: e.message, done: 0, total: 0, bytes: 0 };
-      setBadge(tabId);
+    return sessionReady.then(() => {
+      startJob(tabId, msg.options || {}).catch((e) => {
+        const s = tabState(tabId);
+        s.job = { status: 'error', error: e.message, message: e.message, done: 0, total: 0, bytes: 0 };
+        setBadge(tabId);
+      });
+      return true;
     });
-    return Promise.resolve(true);
   }
   if (msg.type === 'ss-save-transcript') {
     const tabId = msg.tabId != null ? msg.tabId : (sender.tab && sender.tab.id);
-    return saveTranscript(tabId, msg.options || {}).catch((e) => ({ ok: false, error: e.message || String(e) }));
+    return sessionReady.then(() => saveTranscript(tabId, msg.options || {}).catch((e) => ({ ok: false, error: e.message || String(e) })));
   }
   if (msg.type === 'ss-save-visible-transcript') {
     const tabId = msg.tabId != null ? msg.tabId : (sender.tab && sender.tab.id);

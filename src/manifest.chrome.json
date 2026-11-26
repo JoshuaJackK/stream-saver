@@ -1,0 +1,82 @@
+{
+  "manifest_version": 3,
+  "name": "Stream Saver (posnetki predavanj)",
+  "short_name": "Stream Saver",
+  "version": "1.2.9",
+  "description": "Shrani posnetke Microsoft Stream (SharePoint/OneDrive, Teams) in – po neobveznem vklopu – video tokove (HLS, DASH, MP4) na drugih straneh za osebno uporabo brez povezave. Posnetkov z DRM ne prenaša.",
+  "minimum_chrome_version": "116",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "96": "icons/icon-96.png",
+    "128": "icons/icon-128.png"
+  },
+  "permissions": [
+    "webRequest",
+    "downloads",
+    "storage",
+    "unlimitedStorage",
+    "clipboardWrite",
+    "offscreen",
+    "scripting"
+  ],
+  "host_permissions": [
+    "*://*.sharepoint.com/*",
+    "*://*.sharepoint.com.mcas.ms/*",
+    "*://*.svc.ms/*",
+    "*://*.svc.ms.mcas.ms/*",
+    "*://*.teams.microsoft.com/*",
+    "*://*.teams.microsoft.com.mcas.ms/*",
+    "*://*.cloud.microsoft/*"
+  ],
+  "optional_host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "chrome/sw.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.sharepoint.com/*",
+        "*://*.sharepoint.com.mcas.ms/*",
+        "*://*.teams.microsoft.com/*",
+        "*://*.teams.microsoft.com.mcas.ms/*",
+        "*://*.cloud.microsoft/*"
+      ],
+      "js": [
+        "chrome/content-main.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_idle",
+      "all_frames": true,
+      "match_origin_as_fallback": true
+    },
+    {
+      "matches": [
+        "*://*.sharepoint.com/*",
+        "*://*.sharepoint.com.mcas.ms/*",
+        "*://*.teams.microsoft.com/*",
+        "*://*.teams.microsoft.com.mcas.ms/*",
+        "*://*.cloud.microsoft/*"
+      ],
+      "js": [
+        "lib/compat.js",
+        "lib/visibleTranscript.js",
+        "content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true,
+      "match_origin_as_fallback": true
+    }
+  ],
+  "action": {
+    "default_title": "Stream Saver – prenesi posnetek",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  }
+}

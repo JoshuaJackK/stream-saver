@@ -36,8 +36,8 @@ globalThis.SSGen = (function () {
   function onHeaders(d) {
     try {
       if (d.tabId < 0) return;
-      const from = d.originUrl || d.documentUrl || '';
-      if (from.startsWith('moz-extension:')) return;
+      const from = d.initiator || d.originUrl || d.documentUrl || '';
+      if (from.startsWith('moz-extension:') || from.startsWith('chrome-extension:')) return;
       if (jobRunningAnywhere(d.tabId)) return; // lastne zahteve med prenosom ne štejemo
       const r = SSDetect.classify({
         url: d.url, method: d.method, status: d.statusCode,
@@ -56,7 +56,7 @@ globalThis.SSGen = (function () {
       }
       if (g.streams.size >= MAX_STREAMS) return;
       e = {
-        id: nextId++, kind: r.kind, key: r.key, url: d.url, frameId: d.frameId, documentUrl: d.documentUrl || null,
+        id: nextId++, kind: r.kind, key: r.key, url: d.url, frameId: d.frameId, documentUrl: d.documentUrl || d.initiator || null,
         contentType: SSDetect.hdr(d.responseHeaders, 'content-type') || '', size: r.size, audioOnly: r.audioOnly,
         small: !!r.small, ext: r.ext || null, time: Date.now(), lastSeen: Date.now(), meta: null, probe: 'new'
       };
@@ -190,7 +190,8 @@ globalThis.SSGen = (function () {
   async function frameFetch(tabId, frameId, url, opts) {
     const headers = {};
     if (opts && opts.range) headers.Range = 'bytes=' + opts.range;
-    const r = await browser.tabs.sendMessage(tabId, { type: 'ss-gfetch', url, headers }, { frameId: frameId || 0 });
+    const raw = await browser.tabs.sendMessage(tabId, { type: 'ss-gfetch', url, headers }, { frameId: frameId || 0 });
+    const r = typeof SSCompat !== 'undefined' ? SSCompat.decodeFetchResult(raw) : raw;
     if (!r) throw new Error('Okvir strani se ne odziva (osveži stran).');
     if (r.error) throw new Error(r.error);
     return r;
@@ -244,6 +245,7 @@ globalThis.SSGen = (function () {
       job.done = p.done; job.total = p.total; job.bytes = p.bytes; job.message = p.message || job.message;
       if (Date.now() - lastBadge > 1000) { lastBadge = Date.now(); changed(tabId); }
     };
+    if (typeof SSBlob !== 'undefined' && SSBlob.beginKeepAlive) await SSBlob.beginKeepAlive();
     try {
       const fetcher = makeFetcher(tabId, entry);
       const base = { fetchBytes: fetcher, concurrency: opts.concurrency || 4, signal: ctrl.signal, onProgress };
@@ -303,10 +305,10 @@ globalThis.SSGen = (function () {
       const filename = (sub ? sub + '/' : '') + name + '.' + ext;
       job.filename = filename;
       job.message = 'Shranjujem datoteko …';
-      const url = URL.createObjectURL(blob);
+      const url = (typeof SSBlob !== 'undefined' && SSBlob.createObjectURL) ? await SSBlob.createObjectURL(blob) : URL.createObjectURL(blob);
       let downloadId;
       try { downloadId = await browser.downloads.download({ url, filename, saveAs: !!opts.saveAs, conflictAction: 'uniquify' }); }
-      catch (e) { URL.revokeObjectURL(url); throw new Error('Shranjevanje ni uspelo: ' + e.message); }
+      catch (e) { if (typeof SSBlob !== 'undefined' && SSBlob.revokeObjectURL) SSBlob.revokeObjectURL(url); else URL.revokeObjectURL(url); throw new Error('Shranjevanje ni uspelo: ' + e.message); }
       deps.pendingDownloads.set(downloadId, { url, sink });
       sink = null;
       job.status = 'done';
@@ -319,6 +321,7 @@ globalThis.SSGen = (function () {
       if (e.code === 'DRM') job.drm = true;
       if (sink) await sink.abort();
     } finally {
+      if (typeof SSBlob !== 'undefined' && SSBlob.endKeepAlive) SSBlob.endKeepAlive();
       delete job.ctrl;
       changed(tabId);
     }
@@ -328,7 +331,23 @@ globalThis.SSGen = (function () {
   const FILTER = { urls: ['<all_urls>'], types: ['media', 'xmlhttprequest', 'other', 'object'] };
   async function register() {
     try {
+      if (browser.scripting && browser.scripting.registerContentScripts) {
+        try { await browser.scripting.unregisterContentScripts({ ids: ['ss-generic'] }); } catch (e) { /* ignore */ }
+        await browser.scripting.registerContentScripts([{
+          id: 'ss-generic',
+          matches: ['http://*/*', 'https://*/*'],
+          js: ['lib/compat.js', 'content-generic.js'],
+          allFrames: true,
+          matchOriginAsFallback: true,
+          runAt: 'document_idle'
+        }]);
+        registered = { unregister: () => browser.scripting.unregisterContentScripts({ ids: ['ss-generic'] }) };
+        return;
+      }
       if (registered) { try { await registered.unregister(); } catch (e) { /* ignore */ } registered = null; }
+    else if (browser.scripting && browser.scripting.unregisterContentScripts) {
+      try { await browser.scripting.unregisterContentScripts({ ids: ['ss-generic'] }); } catch (e) { /* ignore */ }
+    }
       registered = await browser.contentScripts.register({
         matches: ['http://*/*', 'https://*/*'], js: [{ file: '/content-generic.js' }],
         allFrames: true, matchAboutBlank: true, runAt: 'document_idle'

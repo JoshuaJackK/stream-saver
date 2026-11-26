@@ -17,7 +17,8 @@
         try {
           const r = await pageFetch(msg.url, { credentials: 'include', headers: msg.headers || {}, cache: 'no-store' });
           const ok = r.status >= 200 && r.status < 300;
-          return { status: r.status, retryAfter: r.headers.get('Retry-After'), contentRange: r.headers.get('Content-Range'), buffer: ok ? await r.arrayBuffer() : null };
+          const res = { status: r.status, retryAfter: r.headers.get('Retry-After'), contentRange: r.headers.get('Content-Range'), buffer: ok ? await r.arrayBuffer() : null };
+          return typeof SSCompat !== 'undefined' ? SSCompat.encodeFetchResult(res) : res;
         } catch (e) {
           return { status: 0, retryAfter: null, buffer: null, error: String(e && e.message || e) };
         }
@@ -142,7 +143,7 @@
         panel.appendChild(c);
       } else {
         if (job.error) panel.appendChild(el('div', { class: 'err', text: job.error }));
-        else panel.appendChild(el('div', { class: 'muted', text: 'Datoteko najdeš med prenosi (Ctrl+Shift+Y).' }));
+        else panel.appendChild(el('div', { class: 'muted', text: `Datoteko najdeš med prenosi (${typeof SSCompat !== 'undefined' ? SSCompat.downloadsShortcut : 'Ctrl+Shift+Y'}).` }));
         (job.notes || []).forEach((t) => panel.appendChild(el('div', { class: 'warn', text: t })));
         if (job.warning) panel.appendChild(el('div', { class: 'warn', text: job.warning }));
         const c = el('button', { class: 'act', text: 'Nov prenos' });

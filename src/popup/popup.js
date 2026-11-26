@@ -87,7 +87,7 @@ function render() {
     $('barFill').style.width = job.status === 'done' ? '100%' : $('barFill').style.width;
     $('progressText').textContent = job.status === 'done' ? `Shranjeno kot: ${job.filename}` : '';
     $('progressMsg').textContent = (job.warning ? job.warning + ' ' : '') + (job.message || '');
-    if (job.status === 'done') setStatus('Prenos končan. Datoteko najdeš med prenosi v Firefoxu (Ctrl+Shift+Y).', 'ok');
+    if (job.status === 'done') setStatus(`Prenos končan. Datoteko najdeš med prenosi v ${typeof SSCompat !== 'undefined' ? `${SSCompat.browserName} (${SSCompat.downloadsShortcut})` : 'Firefoxu (Ctrl+Shift+Y)'}.`, 'ok');
     else if (job.status === 'cancelled') setStatus('Prenos je bil preklican.', 'warn');
     else setStatus('Napaka: ' + (job.error || 'neznana napaka') + ' Uporabiš lahko rezervno možnost spodaj.', 'err');
     return;
@@ -177,7 +177,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         format: $('trFormat').value, saveAs: $('saveAs').checked
       } });
       if (r && r.ok) {
-        $('trMsg').textContent = `Shranjeno kot: ${r.filename} (${r.lines} vrstic). Datoteko najdeš med prenosi v Firefoxu (Ctrl+Shift+Y).` + (r.skipped ? ` Preskočenih vrstic z neveljavnim časom: ${r.skipped}.` : '');
+        const dlHint = typeof SSCompat !== 'undefined' ? `${SSCompat.browserName} (${SSCompat.downloadsShortcut})` : 'Firefoxu (Ctrl+Shift+Y)';
+        $('trMsg').textContent = `Shranjeno kot: ${r.filename} (${r.lines} vrstic). Datoteko najdeš med prenosi v ${dlHint}.` + (r.skipped ? ` Preskočenih vrstic z neveljavnim časom: ${r.skipped}.` : '');
       } else {
         $('trMsg').textContent = 'Napaka: ' + ((r && r.error) || 'neznana napaka');
       }
