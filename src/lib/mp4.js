@@ -366,7 +366,13 @@
     return box('ctts', [data]);
   }
 
-  function compatibleFtyp() {
+  function compatibleFtyp(audioOnly) {
+    if (audioOnly) {
+      const major = new TextEncoder().encode('M4A ');
+      const minor = new Uint8Array([0, 0, 2, 0]);
+      const compat = new TextEncoder().encode('M4A mp42isom');
+      return box('ftyp', [major, minor, compat]);
+    }
     // Brands VLC/mpv/browsers accept for progressive H.264+AAC MP4
     const major = new TextEncoder().encode('isom');
     const minor = new Uint8Array([0, 0, 2, 0]);
@@ -546,7 +552,8 @@
     w32(mvhd, mv === 1 ? 32 : 24, maxMovieDur >>> 0);
     w32(mvhd, mvhd.length - 4, trackState.length + 1); // next_track_ID
 
-    const ftyp = compatibleFtyp();
+    const audioOnly = trackState.length > 0 && trackState.every((t) => t.info.handler === 'soun');
+    const ftyp = compatibleFtyp(audioOnly);
     // First assemble moov with placeholder offsets to know its size
     let moov = box('moov', [mvhd].concat(built.map((x) => x.trakBox)));
     const mdatHeader = 8;

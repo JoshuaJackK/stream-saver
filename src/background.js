@@ -404,7 +404,7 @@ function startVisibleTranscriptJob(tabId, opts) {
       if (!s.visibleJob || s.visibleJob.jobId !== jobId) return;
       s.visibleJob = {
         status: 'done',
-        message: 'Shranjeno: ' + saved.filename + ' (' + saved.lines + ' vrstic). Datoteka je med prenosi (Ctrl+Shift+Y).',
+        message: 'Shranjeno: ' + saved.filename + ' (' + saved.lines + ' vrstic). Datoteka je med prenosi (' + (typeof SSCompat !== 'undefined' ? SSCompat.downloadsShortcut : 'Ctrl+Shift+Y') + ').',
         done: saved.lines, total: saved.lines, filename: saved.filename, lines: saved.lines,
         error: null, code: null, details: null, jobId
       };
@@ -653,6 +653,7 @@ async function startJob(tabId, opts) {
   const name = SSMpd.sanitizeFilename(opts.filename || baseTitle(tabId, s, tab));
   const sub = SSMpd.sanitizeSubfolder(opts.subfolder || '');
   const ext = mode === 'audio' ? '.m4a' : '.mp4';
+  const mime = mode === 'audio' ? 'audio/mp4' : 'video/mp4';
   const filename = (sub ? sub + '/' : '') + name + ext;
   const job = { status: 'running', done: 0, total: 0, bytes: 0, message: 'Pripravljam …', filename, ctrl, started: Date.now(), error: null };
   s.job = job;
@@ -671,7 +672,7 @@ async function startJob(tabId, opts) {
     } else if (mode === 'av' && resolved.tracks.length < 2) {
       job.warning = 'Najdena je bila le ena sled (' + resolved.tracks.map((t) => t.type).join(', ') + ').';
     }
-    sink = await SSSink.createSink('ss-' + Date.now() + '.mp4');
+    sink = await SSSink.createSink('ss-' + Date.now() + ext);
     job.sinkKind = sink.kind;
     const result = await SSEngine.runDownload({
       tracks: resolved.tracks,
@@ -693,7 +694,7 @@ async function startJob(tabId, opts) {
       const raw = new Uint8Array(await blob.arrayBuffer());
       if (SSMp4.isFragmented(raw)) {
         const flat = SSMp4.defragmentToProgressive(raw);
-        blob = new Blob([flat], { type: 'video/mp4' });
+        blob = new Blob([flat], { type: mime });
         job.remuxed = true;
         LOG('defragmentirano za VLC', raw.byteLength, '→', flat.byteLength);
       }
@@ -701,6 +702,7 @@ async function startJob(tabId, opts) {
       LOG('defragmentacija ni uspela, ohranjam fragmentiran MP4', e && e.message);
       job.remuxWarning = 'Datoteka je ostala fragmentirana; VLC morda ne bo predvajal zvoka. Pretvori z: ffmpeg -i vhod.mp4 -c copy -movflags +faststart izhod.mp4';
     }
+    if (blob.type !== mime) blob = new Blob([blob], { type: mime });
     job.message = 'Shranjujem datoteko …';
     const url = await createBlobUrl(blob);
     let downloadId;
