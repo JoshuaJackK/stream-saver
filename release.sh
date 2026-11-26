@@ -23,6 +23,7 @@ def bump(path, fn):
     s = fn(s); open(path, "w", encoding="utf-8").write(s)
 # manifest: besedilna zamenjava, da ostane oblika datoteke
 bump("src/manifest.json", lambda s: re.sub(r'("version"\s*:\s*")[^"]+(")', r'\g<1>' + v + r'\g<2>', s, count=1))
+bump("chrome/manifest.json", lambda s: re.sub(r'("version"\s*:\s*")[^"]+(")', r'\g<1>' + v + r'\g<2>', s, count=1))
 for p in ("package.json", "package-lock.json"):
     d = json.load(open(p, encoding="utf-8")); d["version"] = v
     if p == "package-lock.json" and "" in d.get("packages", {}): d["packages"][""]["version"] = v
@@ -42,7 +43,7 @@ ASSET="stream-saver-$VERSION.xpi"
 cp "$XPI" "web-ext-artifacts/$ASSET"
 
 # 4) commit verzije, tag, GitHub Release
-git add src/manifest.json package.json package-lock.json
+git add src/manifest.json chrome/manifest.json package.json package-lock.json
 git commit -m "Release $VERSION"
 git tag "v$VERSION"
 git push origin main "v$VERSION"

@@ -40,3 +40,14 @@ Pravila: verzija mora biti vedno višja od prejšnje; ista verzija se na AMO ne 
 ## Varnost
 V repozitoriju ni ključev, posnetkov ali zasebnih podatkov; testi uporabljajo izmišljene podatke. `dist/`, `web-ext-artifacts/` in `*.xpi` so v `.gitignore`
 (podpisane datoteke so samo kot priponke izdaj na GitHubu).
+
+## Google Chrome (Manifest V3)
+Chrome-specifične datoteke so ločene v mapi `chrome/` (vključno s `chrome/manifest.json`), da `src/` ostane čist za Firefox `web-ext lint` in `web-ext sign`.
+`release.sh` ob novi izdaji posodobi številko različice tudi v `chrome/manifest.json`.
+Paket za Chrome zgradiš s:
+
+```bash
+python build_chrome.py
+```
+
+Ustvari `dist/chrome/` (za *Load unpacked*) in `dist/stream-saver-chrome-<verzija>.zip` (za objavo v Chrome Web Store – glej [CHROME_WEB_STORE.md](CHROME_WEB_STORE.md)).

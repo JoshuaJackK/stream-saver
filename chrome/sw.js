@@ -4,7 +4,7 @@
 importScripts(
   '../lib/compat.js',
   'xml-shim.js',
-  '../lib/blob-bridge.js',
+  'blob-bridge.js',
   '../lib/mpd.js',
   '../lib/mp4.js',
   '../lib/ts.js',
